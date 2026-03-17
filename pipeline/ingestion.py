@@ -10,6 +10,11 @@ import os
 from datetime import datetime
 from .config import PipelineConfig, DEFAULT_FMCG_CONFIG
 
+# Path where raw ingested data is persisted for the /raw-data API endpoint
+_RAW_DATA_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "data", "raw_data.json"
+)
+
 
 def load_csv(path: str, config: PipelineConfig) -> list[dict]:
     articles = []
@@ -114,6 +119,14 @@ def ingest(
         articles = load_json(data_path, config)
     else:
         articles = load_csv(data_path, config)
+
+    # Persist raw data for /raw-data API endpoint
+    try:
+        os.makedirs(os.path.dirname(_RAW_DATA_PATH), exist_ok=True)
+        with open(_RAW_DATA_PATH, "w", encoding="utf-8") as f:
+            json.dump(articles, f, indent=2, default=str)
+    except Exception:
+        pass  # Non-fatal
 
     msg = f"Loaded {len(articles)} records from '{os.path.basename(data_path)}'"
     print(f"[Ingestion] {msg}")

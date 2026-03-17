@@ -45,7 +45,12 @@ async def create_job(req: CreateJobRequest):
                 config=config,
                 progress_cb=progress_cb,
             )
-            job_store.set_job_complete(job_id, result["summary"], result["output_paths"])
+            job_store.set_job_complete(
+                job_id,
+                result["summary"],
+                result["output_paths"],
+                newsletter=result.get("newsletter"),
+            )
         except Exception as e:
             job_store.set_job_error(job_id, str(e))
 

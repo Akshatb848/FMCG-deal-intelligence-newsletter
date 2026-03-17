@@ -16,6 +16,10 @@ export interface Article {
   credibility_score: number;
   source_tier: number | null;
   credibility_flag: string;
+  // Stage 5 – Summarization fields
+  ai_summary?: string;
+  company?: string;
+  deal_value?: string;
 }
 
 export type DealType =
@@ -125,4 +129,72 @@ export interface TrendPoint {
   investments: number;
   divestitures: number;
   total: number;
+}
+
+// ── Newsletter types ──────────────────────────────────────────────────────────
+export interface NewsletterHighlight {
+  title: string;
+  company: string;
+  deal_type: DealType;
+  deal_value: string;
+  summary: string;
+  source: string;
+  published_date: string;
+  url: string;
+  relevance_score: number;
+  credibility_score: number;
+}
+
+export interface NewsletterDeal {
+  company: string;
+  deal_type: DealType;
+  summary: string;
+  source: string;
+  published_date: string;
+  deal_value: string;
+  relevance_score: number;
+  url: string;
+}
+
+export interface NewsletterPipelineStep {
+  stage: string;
+  input: number | string;
+  output: number | string;
+  notes: string;
+}
+
+export interface Newsletter {
+  header: string;
+  date: string;
+  domain_name: string;
+  total_deals: number;
+  key_highlights: NewsletterHighlight[];
+  all_deals: NewsletterDeal[];
+  insights: string[];
+  deal_type_breakdown: Record<string, number>;
+  pipeline_summary: NewsletterPipelineStep[];
+  text: string;
+}
+
+// ── Raw data types ────────────────────────────────────────────────────────────
+export interface RawRecord {
+  id: string;
+  title: string;
+  summary: string;
+  source: string;
+  published_date: string;
+  url: string;
+  category: string;
+  [key: string]: string | number | undefined;
+}
+
+export interface RawDataResponse {
+  count: number;
+  records: RawRecord[];
+}
+
+export interface ProcessedDataResponse {
+  count: number;
+  summary: PipelineSummary;
+  articles: Article[];
 }

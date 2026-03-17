@@ -3,8 +3,11 @@ import type {
   JobStatus,
   ResultsSummaryResponse,
   PipelineConfig,
+  Newsletter,
+  RawDataResponse,
+  ProcessedDataResponse,
 } from '@/types';
-import { MOCK_ARTICLES, MOCK_SUMMARY } from './mockData';
+import { MOCK_ARTICLES, MOCK_SUMMARY, MOCK_NEWSLETTER } from './mockData';
 
 const BASE_URL = '/api';
 
@@ -82,6 +85,36 @@ export async function getMockResults(): Promise<ResultsSummaryResponse> {
       { stage: 'newsletter',  input: 24, output: 24, message: 'Report generated' },
     ],
   };
+}
+
+// ── Pipeline convenience endpoints ────────────────────────────────────────────
+
+export async function getRawData(): Promise<RawDataResponse> {
+  try {
+    return await apiFetch<RawDataResponse>('/raw-data');
+  } catch {
+    return { count: MOCK_ARTICLES.length, records: MOCK_ARTICLES as unknown as RawDataResponse['records'] };
+  }
+}
+
+export async function getProcessedData(): Promise<ProcessedDataResponse> {
+  try {
+    return await apiFetch<ProcessedDataResponse>('/processed-data');
+  } catch {
+    return { count: MOCK_ARTICLES.length, summary: MOCK_SUMMARY, articles: MOCK_ARTICLES };
+  }
+}
+
+export async function getNewsletter(): Promise<Newsletter> {
+  try {
+    return await apiFetch<Newsletter>('/newsletter');
+  } catch {
+    return MOCK_NEWSLETTER;
+  }
+}
+
+export async function runPipeline(): Promise<{ job_id: string; status: string; message: string }> {
+  return apiFetch('/run-pipeline', { method: 'POST' });
 }
 
 // ── AI Assistant (mock — replace with real Anthropic API call) ────────────────
