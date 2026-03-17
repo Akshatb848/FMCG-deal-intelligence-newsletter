@@ -1,77 +1,107 @@
 'use client';
 
-import { Search, Bell, Command, MessageSquare, Download } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Search, Bell, Command, MessageSquare, Cpu, Wifi } from 'lucide-react';
 import { useStore } from '@/store/useStore';
-import { cn } from '@/lib/utils';
+import { usePathname } from 'next/navigation';
+
+const PAGE_TITLES: Record<string, { title: string; sub: string }> = {
+  '/':           { title: 'Dashboard',   sub: 'Intelligence Overview' },
+  '/news':       { title: 'News Feed',   sub: 'Live Deal Activity' },
+  '/insights':   { title: 'Insights',    sub: 'Deep Analytics' },
+  '/newsletter': { title: 'Newsletter',  sub: 'Daily Intelligence Brief' },
+  '/raw-data':   { title: 'Raw Data',    sub: 'Stage 1 Output' },
+  '/saved':      { title: 'Saved',       sub: 'Bookmarked Deals' },
+};
 
 export function Header() {
-  const { setCommandPalette, toggleChat, isOpen: chatOpen } = useStore();
+  const { toggleCommandPalette, toggleChat, chatOpen } = useStore();
+  const pathname = usePathname();
+  const page = PAGE_TITLES[pathname] ?? { title: 'Platform', sub: '' };
 
   return (
-    <header className="h-14 flex items-center justify-between px-4 md:px-6
-                       border-b border-white/[0.06] bg-background/60 backdrop-blur-xl
-                       sticky top-0 z-30 flex-shrink-0">
+    <header
+      className="h-14 flex items-center px-4 gap-4 flex-shrink-0 relative"
+      style={{
+        background: 'rgba(5,9,20,0.85)',
+        backdropFilter: 'blur(24px)',
+        WebkitBackdropFilter: 'blur(24px)',
+        borderBottom: '1px solid rgba(255,255,255,0.05)',
+      }}
+    >
+      {/* Page title */}
+      <div className="flex items-center gap-2 min-w-0">
+        <div>
+          <h1 className="text-sm font-bold text-white leading-tight">{page.title}</h1>
+          {page.sub && <p className="text-[10px] leading-tight" style={{ color: 'rgba(255,255,255,0.3)' }}>{page.sub}</p>}
+        </div>
+      </div>
+
+      <div className="flex-1" />
+
+      {/* System status indicators */}
+      <div className="hidden md:flex items-center gap-3 mr-2">
+        {/* AI Engine */}
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
+             style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.15)' }}>
+          <Cpu className="w-3 h-3" style={{ color: '#60a5fa' }} />
+          <span className="text-[10px] font-medium" style={{ color: '#60a5fa' }}>AI Ready</span>
+        </div>
+        {/* Connection */}
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
+             style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.15)' }}>
+          <Wifi className="w-3 h-3" style={{ color: '#34d399' }} />
+          <span className="text-[10px] font-medium" style={{ color: '#34d399' }}>Live</span>
+        </div>
+      </div>
 
       {/* Search trigger */}
-      <motion.button
-        whileHover={{ scale: 1.01 }}
-        whileTap={{ scale: 0.99 }}
-        onClick={() => setCommandPalette(true)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.04]
-                   border border-white/[0.08] text-muted-foreground text-sm
-                   hover:bg-white/[0.07] hover:border-white/[0.14] transition-all
-                   w-48 md:w-64"
+      <button
+        onClick={toggleCommandPalette}
+        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-all"
+        style={{
+          background: 'rgba(255,255,255,0.04)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          color: 'rgba(255,255,255,0.35)',
+        }}
       >
-        <Search className="w-3.5 h-3.5 flex-shrink-0" />
-        <span className="text-xs flex-1 text-left">Search deals…</span>
-        <div className="flex items-center gap-0.5 text-[10px] opacity-50 ml-auto">
-          <Command className="w-2.5 h-2.5" />
-          <span>K</span>
+        <Search className="w-3.5 h-3.5" />
+        <span className="hidden sm:block">Search…</span>
+        <div className="hidden sm:flex items-center gap-0.5 ml-1">
+          <kbd className="px-1 rounded text-[9px]"
+               style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.25)', border: '1px solid rgba(255,255,255,0.1)' }}>
+            ⌘
+          </kbd>
+          <kbd className="px-1 rounded text-[9px]"
+               style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.25)', border: '1px solid rgba(255,255,255,0.1)' }}>
+            K
+          </kbd>
         </div>
-      </motion.button>
+      </button>
 
-      {/* Right actions */}
-      <div className="flex items-center gap-1">
+      {/* Bell */}
+      <button className="relative p-2 rounded-lg hover:bg-white/[0.04] transition-colors">
+        <Bell className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.35)' }} />
+        <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-blue-500"
+              style={{ boxShadow: '0 0 6px rgba(59,130,246,0.7)' }} />
+      </button>
 
-        {/* Export hint */}
-        <button className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg
-                           text-xs text-muted-foreground hover:text-foreground
-                           hover:bg-white/[0.05] transition-all">
-          <Download className="w-3.5 h-3.5" />
-          <span>Export</span>
-        </button>
+      {/* AI chat toggle */}
+      <button
+        onClick={toggleChat}
+        className="p-2 rounded-lg transition-all"
+        style={{
+          background: chatOpen ? 'rgba(139,92,246,0.15)' : 'transparent',
+          border: chatOpen ? '1px solid rgba(139,92,246,0.3)' : '1px solid transparent',
+          color: chatOpen ? '#a78bfa' : 'rgba(255,255,255,0.35)',
+        }}
+      >
+        <MessageSquare className="w-4 h-4" />
+      </button>
 
-        {/* Notifications */}
-        <button className="relative w-8 h-8 flex items-center justify-center rounded-lg
-                           text-muted-foreground hover:text-foreground hover:bg-white/[0.05]
-                           transition-all">
-          <Bell className="w-4 h-4" />
-          <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full
-                           bg-blue-400 ring-2 ring-background" />
-        </button>
-
-        {/* AI chat toggle */}
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={toggleChat}
-          className={cn(
-            'w-8 h-8 flex items-center justify-center rounded-lg transition-all',
-            chatOpen
-              ? 'bg-primary/20 text-primary border border-primary/30'
-              : 'text-muted-foreground hover:text-foreground hover:bg-white/[0.05]',
-          )}
-        >
-          <MessageSquare className="w-4 h-4" />
-        </motion.button>
-
-        {/* Avatar */}
-        <div className="ml-1 w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-violet-600
-                        flex items-center justify-center text-[11px] font-bold text-white
-                        ring-2 ring-white/10 cursor-pointer">
-          A
-        </div>
+      {/* Avatar */}
+      <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold text-white"
+           style={{ background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)' }}>
+        A
       </div>
     </header>
   );
