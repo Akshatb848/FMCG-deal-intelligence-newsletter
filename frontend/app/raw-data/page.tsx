@@ -35,7 +35,7 @@ export default function RawDataPage() {
     } catch { toast.error('Could not start pipeline'); }
   };
 
-  const uniqueSources = data ? [...new Set(data.records.map(r => r.source))].length : 0;
+  const uniqueSources = data ? Array.from(new Set(data.records.map(r => r.source))).length : 0;
   const withUrl       = data ? data.records.filter(r => r.url?.startsWith('http')).length : 0;
   const dateRange = (() => {
     if (!data?.records.length) return '—';

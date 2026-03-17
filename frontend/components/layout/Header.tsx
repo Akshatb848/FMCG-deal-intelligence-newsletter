@@ -14,7 +14,7 @@ const PAGE_TITLES: Record<string, { title: string; sub: string }> = {
 };
 
 export function Header() {
-  const { toggleCommandPalette, toggleChat, chatOpen } = useStore();
+  const { setCommandPalette, toggleChat, isOpen: chatOpen } = useStore();
   const pathname = usePathname();
   const page = PAGE_TITLES[pathname] ?? { title: 'Platform', sub: '' };
 
@@ -56,7 +56,7 @@ export function Header() {
 
       {/* Search trigger */}
       <button
-        onClick={toggleCommandPalette}
+        onClick={() => setCommandPalette(true)}
         className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-all"
         style={{
           background: 'rgba(255,255,255,0.04)',
