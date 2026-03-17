@@ -119,7 +119,7 @@ export function useTrendData(): TrendPoint[] {
 
 export function useSources(articles: Article[]): string[] {
   return useMemo(
-    () => [...new Set(articles.map((a) => a.source))].sort(),
+    () => Array.from(new Set(articles.map((a) => a.source))).sort(),
     [articles],
   );
 }
