@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Deal Intelligence Platform</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <!-- ── Header ──────────────────────────────────────────────────────── -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">⚡</span>
+        <span class="logo-text">Deal Intelligence <span class="logo-sub">Platform</span></span>
+      </div>
+      <nav class="header-nav">
+        <a href="#" onclick="showDocs()" class="nav-link">API Docs</a>
+        <a href="https://github.com" class="nav-link">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ── Wizard steps ────────────────────────────────────────────────── -->
+  <div class="wizard-bar">
+    <div class="wizard-steps" id="wizardSteps">
+      <div class="step active" data-step="1">
+        <span class="step-num">1</span>
+        <span class="step-label">Upload Dataset</span>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step" data-step="2">
+        <span class="step-num">2</span>
+        <span class="step-label">Map Columns</span>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step" data-step="3">
+        <span class="step-num">3</span>
+        <span class="step-label">Configure Pipeline</span>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step" data-step="4">
+        <span class="step-num">4</span>
+        <span class="step-label">Run &amp; Monitor</span>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step" data-step="5">
+        <span class="step-num">5</span>
+        <span class="step-label">Results</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Main content ────────────────────────────────────────────────── -->
+  <main class="main-content">
+
+    <!-- Step 1: Upload -->
+    <section class="panel" id="panel-1">
+      <div class="panel-header">
+        <h2>Upload Your Dataset</h2>
+        <p>Supports CSV and JSON files up to 50 MB. Any column structure is accepted.</p>
+      </div>
+      <div class="upload-zone" id="uploadZone">
+        <div class="upload-icon">📂</div>
+        <p class="upload-hint"><strong>Drag &amp; drop</strong> your file here, or</p>
+        <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">Browse File</button>
+        <input type="file" id="fileInput" accept=".csv,.json" style="display:none" />
+        <p class="upload-note">Accepted formats: CSV, JSON</p>
+      </div>
+      <div class="upload-progress hidden" id="uploadProgress">
+        <div class="spinner"></div>
+        <span>Uploading and parsing file…</span>
+      </div>
+      <div class="preview-table-wrap hidden" id="previewWrap">
+        <div class="preview-meta" id="previewMeta"></div>
+        <div class="table-scroll">
+          <table class="data-table" id="previewTable"></table>
+        </div>
+        <div class="panel-actions">
+          <button class="btn btn-primary" onclick="goToStep(2)">Map Columns →</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 2: Column Mapping -->
+    <section class="panel hidden" id="panel-2">
+      <div class="panel-header">
+        <h2>Map Your Columns</h2>
+        <p>Tell the pipeline which column corresponds to each standard field. The pipeline uses <strong>title</strong>, <strong>body</strong>, and <strong>source</strong> as required fields.</p>
+      </div>
+      <div class="mapping-grid" id="mappingGrid"></div>
+      <div class="panel-actions">
+        <button class="btn btn-secondary" onclick="goToStep(1)">← Back</button>
+        <button class="btn btn-primary" onclick="goToStep(3)">Configure Pipeline →</button>
+      </div>
+    </section>
+
+    <!-- Step 3: Pipeline Configuration -->
+    <section class="panel hidden" id="panel-3">
+      <div class="panel-header">
+        <h2>Configure Pipeline</h2>
+        <p>Define your domain keywords, source credibility tiers, and processing thresholds. Or use the FMCG preset to get started quickly.</p>
+      </div>
+
+      <div class="config-actions-top">
+        <button class="btn btn-outline" onclick="loadPreset('fmcg')">Load FMCG Preset</button>
+        <button class="btn btn-outline" onclick="loadPreset('tech')">Load Tech M&amp;A Preset</button>
+        <button class="btn btn-outline" onclick="clearConfig()">Clear All</button>
+      </div>
+
+      <div class="config-grid">
+        <div class="config-section">
+          <h3>General</h3>
+          <label class="field-label">Report / Domain Name
+            <input type="text" id="cfg-domain" class="field-input" value="Deal Intelligence" placeholder="e.g. FMCG Deal Intelligence" />
+          </label>
+        </div>
+
+        <div class="config-section">
+          <h3>Domain Keywords <span class="badge">High weight · 2 pts each</span></h3>
+          <p class="config-hint">Key entities for your domain — company names, brand names, organisations. One per line.</p>
+          <textarea id="cfg-primary" class="field-textarea" rows="6" placeholder="unilever&#10;nestlé&#10;coca-cola&#10;pepsico"></textarea>
+        </div>
+
+        <div class="config-section">
+          <h3>Sector Keywords <span class="badge badge-teal">Lower weight · 1.5 pts each</span></h3>
+          <p class="config-hint">Sector nouns that characterise your domain. One per line.</p>
+          <textarea id="cfg-secondary" class="field-textarea" rows="6" placeholder="food&#10;beverage&#10;consumer goods&#10;fmcg"></textarea>
+        </div>
+
+        <div class="config-section">
+          <h3>Deal Activity Keywords <span class="badge badge-gold">Primary · 2.5 pts</span></h3>
+          <p class="config-hint">Verbs and nouns indicating deal activity (acquisitions, investments, etc.). One per line.</p>
+          <textarea id="cfg-deal-primary" class="field-textarea" rows="5" placeholder="acquires&#10;acquisition&#10;merger&#10;invests&#10;divests"></textarea>
+        </div>
+
+        <div class="config-section">
+          <h3>Deal Signal Keywords <span class="badge badge-grey">Secondary · 1 pt</span></h3>
+          <p class="config-hint">Supporting deal vocabulary. One per line.</p>
+          <textarea id="cfg-deal-secondary" class="field-textarea" rows="5" placeholder="deal&#10;transaction&#10;bid&#10;offer&#10;valuation"></textarea>
+        </div>
+
+        <div class="config-section">
+          <h3>Deal Type Labels</h3>
+          <p class="config-hint">Map keywords to category labels for grouping. Format: <code>keyword = Label</code>. One per line.</p>
+          <textarea id="cfg-deal-labels" class="field-textarea" rows="5" placeholder="acquires = Acquisition&#10;merger = Merger&#10;invests = Investment&#10;divests = Divestiture"></textarea>
+        </div>
+
+        <div class="config-section">
+          <h3>Source Tier 1 <span class="badge badge-green">Score: 9/10</span></h3>
+          <p class="config-hint">Most credible sources (major newswires, tier-1 press). One per line.</p>
+          <textarea id="cfg-tier1" class="field-textarea" rows="4" placeholder="Reuters&#10;Bloomberg&#10;Financial Times&#10;Wall Street Journal"></textarea>
+        </div>
+
+        <div class="config-section">
+          <h3>Source Tier 2 <span class="badge badge-teal">Score: 7/10</span></h3>
+          <p class="config-hint">Mainstream business/industry press. One per line.</p>
+          <textarea id="cfg-tier2" class="field-textarea" rows="4" placeholder="CNBC&#10;BBC&#10;Forbes&#10;Economic Times"></textarea>
+        </div>
+
+        <div class="config-section">
+          <h3>Source Tier 3 <span class="badge badge-grey">Score: 5/10</span></h3>
+          <p class="config-hint">Specialist trade press. One per line.</p>
+          <textarea id="cfg-tier3" class="field-textarea" rows="4" placeholder="TechCrunch&#10;MarketWatch&#10;PE Hub"></textarea>
+        </div>
+
+        <div class="config-section">
+          <h3>Blocklist <span class="badge badge-red">Hard-blocked</span></h3>
+          <p class="config-hint">Sources to block entirely (rumour sites, spam, unverified blogs). One per line.</p>
+          <textarea id="cfg-blocklist" class="field-textarea" rows="3" placeholder="dealrumors.net&#10;fakeblog.com"></textarea>
+        </div>
+
+        <div class="config-section config-thresholds">
+          <h3>Thresholds</h3>
+          <div class="threshold-row">
+            <label class="field-label">
+              Minimum Relevance Score
+              <span class="threshold-hint">Combined domain + deal score required to pass filtering (0–80)</span>
+              <div class="slider-wrap">
+                <input type="range" id="cfg-min-relevance" min="0" max="80" step="1" value="8"
+                       oninput="document.getElementById('min-rel-val').textContent = this.value" />
+                <span class="slider-value" id="min-rel-val">8</span>
+              </div>
+            </label>
+          </div>
+          <div class="threshold-row">
+            <label class="field-label">
+              Deduplication Threshold
+              <span class="threshold-hint">Cosine similarity cutoff for near-duplicate detection (0.05–0.95)</span>
+              <div class="slider-wrap">
+                <input type="range" id="cfg-dedup" min="5" max="95" step="5" value="20"
+                       oninput="document.getElementById('dedup-val').textContent = (this.value/100).toFixed(2)" />
+                <span class="slider-value" id="dedup-val">0.20</span>
+              </div>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-actions">
+        <button class="btn btn-secondary" onclick="goToStep(2)">← Back</button>
+        <button class="btn btn-primary" onclick="startPipeline()">▶ Run Pipeline</button>
+      </div>
+    </section>
+
+    <!-- Step 4: Run & Monitor -->
+    <section class="panel hidden" id="panel-4">
+      <div class="panel-header">
+        <h2>Pipeline Running</h2>
+        <p>Processing your dataset through all 5 stages…</p>
+      </div>
+
+      <div class="pipeline-stages" id="pipelineStages">
+        <div class="stage-card" id="stage-ingestion">
+          <div class="stage-icon">📥</div>
+          <div class="stage-info">
+            <div class="stage-name">Stage 1 · Ingestion</div>
+            <div class="stage-msg">Waiting…</div>
+          </div>
+          <div class="stage-badge">—</div>
+        </div>
+        <div class="stage-arrow">↓</div>
+        <div class="stage-card" id="stage-dedup">
+          <div class="stage-icon">🔍</div>
+          <div class="stage-info">
+            <div class="stage-name">Stage 2 · De-duplication</div>
+            <div class="stage-msg">Waiting…</div>
+          </div>
+          <div class="stage-badge">—</div>
+        </div>
+        <div class="stage-arrow">↓</div>
+        <div class="stage-card" id="stage-relevance">
+          <div class="stage-icon">🎯</div>
+          <div class="stage-info">
+            <div class="stage-name">Stage 3 · Relevance Scoring</div>
+            <div class="stage-msg">Waiting…</div>
+          </div>
+          <div class="stage-badge">—</div>
+        </div>
+        <div class="stage-arrow">↓</div>
+        <div class="stage-card" id="stage-credibility">
+          <div class="stage-icon">✅</div>
+          <div class="stage-info">
+            <div class="stage-name">Stage 4 · Credibility Check</div>
+            <div class="stage-msg">Waiting…</div>
+          </div>
+          <div class="stage-badge">—</div>
+        </div>
+        <div class="stage-arrow">↓</div>
+        <div class="stage-card" id="stage-newsletter">
+          <div class="stage-icon">📊</div>
+          <div class="stage-info">
+            <div class="stage-name">Stage 5 · Report Generation</div>
+            <div class="stage-msg">Waiting…</div>
+          </div>
+          <div class="stage-badge">—</div>
+        </div>
+      </div>
+
+      <div class="run-log" id="runLog"></div>
+    </section>
+
+    <!-- Step 5: Results Dashboard -->
+    <section class="panel hidden" id="panel-5">
+      <div class="panel-header">
+        <h2>Results Dashboard</h2>
+        <p>Pipeline complete. Download your reports or explore the results below.</p>
+      </div>
+
+      <!-- KPI Cards -->
+      <div class="kpi-row" id="kpiRow"></div>
+
+      <!-- Downloads -->
+      <div class="download-row" id="downloadRow">
+        <span class="download-label">Download Report:</span>
+        <button class="btn btn-download" onclick="download('json')">⬇ JSON</button>
+        <button class="btn btn-download" onclick="download('csv')">⬇ CSV</button>
+        <button class="btn btn-download btn-excel" onclick="download('xlsx')">⬇ Excel (4-sheet)</button>
+      </div>
+
+      <!-- Charts -->
+      <div class="charts-row">
+        <div class="chart-card">
+          <h3>Deal Type Breakdown</h3>
+          <canvas id="chartTypes"></canvas>
+        </div>
+        <div class="chart-card">
+          <h3>Pipeline Funnel</h3>
+          <canvas id="chartFunnel"></canvas>
+        </div>
+      </div>
+
+      <!-- Article table -->
+      <div class="results-table-wrap">
+        <div class="results-toolbar">
+          <h3>Processed Records <span class="badge" id="articleCount"></span></h3>
+          <input type="text" id="articleSearch" class="search-input" placeholder="Search records…"
+                 oninput="filterArticles(this.value)" />
+        </div>
+        <div class="table-scroll">
+          <table class="data-table" id="articlesTable"></table>
+        </div>
+      </div>
+
+      <div class="panel-actions">
+        <button class="btn btn-secondary" onclick="resetAll()">← Start Over</button>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="app-footer">
+    Deal Intelligence Platform · Built with FastAPI + scikit-learn + openpyxl
+  </footer>
+
+  <script src="/static/js/main.js"></script>
+</body>
+</html>
