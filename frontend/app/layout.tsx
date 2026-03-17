@@ -26,22 +26,28 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={inter.variable} suppressHydrationWarning>
-      <body className="bg-background text-foreground min-h-screen">
+      <body style={{ backgroundColor: '#060C15' }} className="text-foreground min-h-screen">
         <Providers>
-          {/* Background grid pattern */}
+          {/* Background: subtle dot grid */}
           <div
-            className="fixed inset-0 pointer-events-none opacity-[0.3]"
+            className="fixed inset-0 pointer-events-none"
             style={{
-              backgroundImage:
-                'linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px)',
-              backgroundSize: '48px 48px',
+              backgroundImage: 'radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px)',
+              backgroundSize: '24px 24px',
+              opacity: 0.6,
+            }}
+          />
+          {/* Ambient top glow */}
+          <div
+            className="fixed inset-x-0 top-0 pointer-events-none h-64"
+            style={{
+              background: 'radial-gradient(ellipse 80% 40% at 50% -10%, rgba(59,130,246,0.12) 0%, transparent 70%)',
             }}
           />
 
-          {/* Command palette */}
           <CommandPalette />
 
-          <div className="flex h-screen overflow-hidden">
+          <div className="flex h-screen overflow-hidden relative z-10">
             <Sidebar />
             <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
               <Header />
@@ -51,7 +57,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
           </div>
 
-          {/* AI assistant floating panel */}
           <AIAssistant />
         </Providers>
       </body>
