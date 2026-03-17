@@ -1,4 +1,4 @@
-import type { Article, TrendPoint, PipelineSummary } from '@/types';
+import type { Article, TrendPoint, PipelineSummary, Newsletter } from '@/types';
 
 export const MOCK_ARTICLES: Article[] = [
   {
@@ -258,3 +258,87 @@ export const AI_QUICK_PROMPTS = [
   'Which deals are highest value?',
   'Compare acquisition vs investment activity',
 ];
+
+// ── Mock Newsletter ───────────────────────────────────────────────────────────
+
+export const MOCK_NEWSLETTER: Newsletter = {
+  header: 'FMCG Deal Intelligence – Daily Brief',
+  date: '2026-03-17',
+  domain_name: 'FMCG Deal Intelligence',
+  total_deals: 12,
+  key_highlights: [
+    {
+      title: 'Unilever acquires Minimalist skincare brand for $500M',
+      company: 'Unilever',
+      deal_type: 'Acquisition',
+      deal_value: '$500M',
+      summary: "Unilever has completed the acquisition of Indian skincare brand Minimalist for approximately $500 million. The deal strengthens Unilever's position in the fast-growing Indian skincare market and marks its largest beauty deal in Asia.",
+      source: 'Reuters',
+      published_date: '2026-03-15',
+      url: '#',
+      relevance_score: 69.5,
+      credibility_score: 9,
+    },
+    {
+      title: 'Nestlé leads $300M Series D in plant-based startup NotCo',
+      company: 'Nestlé',
+      deal_type: 'Investment',
+      deal_value: '$300M',
+      summary: "Swiss food giant Nestlé leads a $300M Series D round in NotCo, the AI-powered plant-based protein company. The investment values NotCo at $2.5B and accelerates Nestlé's transition towards sustainable food offerings.",
+      source: 'Bloomberg',
+      published_date: '2026-03-14',
+      url: '#',
+      relevance_score: 64.0,
+      credibility_score: 9,
+    },
+    {
+      title: 'KKR acquires majority stake in Haldiram\'s Snacks at $8.5B valuation',
+      company: 'KKR',
+      deal_type: 'Stake Acquisition',
+      deal_value: '$8.5B',
+      summary: "Private equity giant KKR has acquired a majority stake in Haldiram's Snacks at a valuation of $8.5 billion. The deal is the largest private equity transaction in the Indian FMCG sector to date.",
+      source: 'Financial Times',
+      published_date: '2026-03-13',
+      url: '#',
+      relevance_score: 62.5,
+      credibility_score: 9,
+    },
+  ],
+  all_deals: [
+    { company: 'Unilever', deal_type: 'Acquisition', summary: 'Acquires Minimalist skincare for $500M.', source: 'Reuters', published_date: '2026-03-15', deal_value: '$500M', relevance_score: 69.5, url: '#' },
+    { company: 'Nestlé', deal_type: 'Investment', summary: 'Leads $300M Series D in NotCo.', source: 'Bloomberg', published_date: '2026-03-14', deal_value: '$300M', relevance_score: 64.0, url: '#' },
+    { company: 'KKR', deal_type: 'Stake Acquisition', summary: 'Majority stake in Haldiram\'s at $8.5B valuation.', source: 'Financial Times', published_date: '2026-03-13', deal_value: '$8.5B', relevance_score: 62.5, url: '#' },
+    { company: 'PepsiCo', deal_type: 'Acquisition', summary: 'Acquires Siete Foods for $1.2B.', source: 'CNBC', published_date: '2026-03-12', deal_value: '$1.2B', relevance_score: 60.0, url: '#' },
+    { company: 'Reckitt', deal_type: 'Divestiture', summary: 'Divests homecare portfolio to PE firm for $800M.', source: 'Bloomberg', published_date: '2026-03-11', deal_value: '$800M', relevance_score: 57.0, url: '#' },
+    { company: 'Coca-Cola', deal_type: 'Acquisition', summary: 'Acquires Ghost Energy brand in $990M deal.', source: 'WSJ', published_date: '2026-03-10', deal_value: '$990M', relevance_score: 55.5, url: '#' },
+    { company: 'Diageo', deal_type: 'Acquisition', summary: 'Acquires Don Papa rum brand from Bleeding Heart Rum.', source: 'Reuters', published_date: '2026-03-09', deal_value: '', relevance_score: 52.0, url: '#' },
+    { company: 'L\'Oréal', deal_type: 'Acquisition', summary: 'Completes full acquisition of Aesop for $2.5B.', source: 'Bloomberg', published_date: '2026-03-08', deal_value: '$2.5B', relevance_score: 51.0, url: '#' },
+    { company: 'Kraft Heinz', deal_type: 'Divestiture', summary: 'Sells Planters nut brand as part of portfolio restructuring.', source: 'WSJ', published_date: '2026-03-07', deal_value: '', relevance_score: 49.5, url: '#' },
+    { company: 'AB InBev', deal_type: 'Joint Venture', summary: 'Forms JV with Tilray for cannabis-infused beverages.', source: 'Bloomberg', published_date: '2026-03-06', deal_value: '', relevance_score: 47.0, url: '#' },
+    { company: 'Mondelez', deal_type: 'Acquisition', summary: 'Acquires Clif Bar for $2.9B.', source: 'Reuters', published_date: '2026-03-05', deal_value: '$2.9B', relevance_score: 45.5, url: '#' },
+    { company: 'Danone', deal_type: 'Divestiture', summary: 'Divests Horizon Organic brand to improve margins.', source: 'Financial Times', published_date: '2026-03-04', deal_value: '', relevance_score: 44.0, url: '#' },
+  ],
+  insights: [
+    '📈 Acquisition activity is prominent, signalling market consolidation. (7 deals recorded this period)',
+    '🔍 Beauty and personal care M&A is surging, led by premium D2C brands.',
+    '🔍 Food & Beverage deals dominate — driven by shifting consumer preferences.',
+    '⚡ High deal volume (12 records) suggests an active deal environment.',
+    '💡 Rise in small-cap acquisitions and early-stage investments in new-age FMCG brands.',
+  ],
+  deal_type_breakdown: {
+    Acquisition: 6,
+    Investment: 2,
+    Divestiture: 3,
+    'Stake Acquisition': 1,
+  },
+  pipeline_summary: [
+    { stage: '1 – Ingestion', input: 'Raw file', output: 38, notes: 'Loaded 38 records; normalised field names and dates.' },
+    { stage: '2 – De-duplication', input: 38, output: 30, notes: 'Exact dedup via title hash + near-dedup via TF-IDF cosine (threshold=0.20). Removed 8 duplicates.' },
+    { stage: '3 – Relevance Filtering', input: 30, output: 18, notes: 'Domain keyword score + deal keyword score (threshold=8.0). Filtered 12 off-topic records.' },
+    { stage: '4 – Credibility Check', input: 18, output: 15, notes: '3-tier source whitelist. Hard-blocked 3 record(s) from unreliable sources.' },
+    { stage: '5 – Summarization', input: 15, output: 15, notes: 'Extractive summarization: 2-line summaries per article. Extracted company names and deal values.' },
+    { stage: '6 – Newsletter Generation', input: 15, output: '1 newsletter', notes: 'Structured newsletter: header + key highlights + all deals + insights.' },
+    { stage: '7 – Output Formatting', input: 15, output: '15 records → 3 files', notes: 'Excel workbook (4 sheets) + JSON + CSV.' },
+  ],
+  text: '',
+};

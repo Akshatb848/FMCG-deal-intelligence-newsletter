@@ -37,9 +37,23 @@ def save_upload(filename: str, content: bytes) -> str:
     return file_id
 
 
+def register_file(path: str) -> str:
+    """Register an existing on-disk file and return a synthetic file_id."""
+    file_id = str(uuid.uuid4())
+    with _lock:
+        _files[file_id] = path
+    return file_id
+
+
 def get_file_path(file_id: str) -> str | None:
     with _lock:
         return _files.get(file_id)
+
+
+def all_jobs() -> list[dict]:
+    """Return a snapshot list of all job dicts."""
+    with _lock:
+        return [dict(j) for j in _jobs.values()]
 
 
 # ── Jobs ──────────────────────────────────────────────────────────────────────
@@ -84,12 +98,19 @@ def add_progress(job_id: str, stage: str, inp: int, out: int, message: str):
             })
 
 
-def set_job_complete(job_id: str, summary: dict, output_files: dict):
+def set_job_complete(
+    job_id: str,
+    summary: dict,
+    output_files: dict,
+    newsletter: dict | None = None,
+):
     with _lock:
         if job_id in _jobs:
             _jobs[job_id]["state"]        = JobState.COMPLETE
             _jobs[job_id]["summary"]      = summary
             _jobs[job_id]["output_files"] = output_files
+            if newsletter is not None:
+                _jobs[job_id]["newsletter"] = newsletter
 
 
 def set_job_error(job_id: str, error: str):

@@ -6,16 +6,18 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Newspaper, BarChart3, Bookmark,
   Zap, ChevronLeft, ChevronRight, Settings, HelpCircle,
-  TrendingUp, Activity,
+  TrendingUp, Activity, FileText, Database,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useStore } from '@/store/useStore';
 
 const NAV_ITEMS = [
-  { href: '/',          icon: LayoutDashboard, label: 'Dashboard',   group: 'main' },
-  { href: '/news',      icon: Newspaper,       label: 'News Feed',   group: 'main' },
-  { href: '/insights',  icon: BarChart3,       label: 'Insights',    group: 'main' },
-  { href: '/saved',     icon: Bookmark,        label: 'Saved',       group: 'main' },
+  { href: '/',            icon: LayoutDashboard, label: 'Dashboard',   group: 'main' },
+  { href: '/news',        icon: Newspaper,       label: 'News Feed',   group: 'main' },
+  { href: '/insights',   icon: BarChart3,        label: 'Insights',    group: 'main' },
+  { href: '/newsletter',  icon: FileText,        label: 'Newsletter',  group: 'reports' },
+  { href: '/raw-data',    icon: Database,        label: 'Raw Data',    group: 'reports' },
+  { href: '/saved',       icon: Bookmark,        label: 'Saved',       group: 'main' },
 ];
 
 const BOTTOM_ITEMS = [
