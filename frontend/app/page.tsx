@@ -14,6 +14,7 @@ import { DashboardSkeleton } from '@/components/ui/skeleton';
 import { HeroSection } from '@/components/hero/HeroSection';
 import { PipelineViz } from '@/components/pipeline/PipelineViz';
 import { KPIMetric, SectionHeader } from '@/components/ui/GlowCard';
+import { SafeWidget } from '@/components/ui/ErrorBoundary';
 import { toast } from 'sonner';
 import type { PipelineProgress } from '@/components/pipeline/PipelineViz';
 
@@ -160,14 +161,18 @@ export default function DashboardPage() {
               <span className="text-xs font-semibold text-foreground">Deal Trend — Weekly</span>
               {isFetching && <RefreshCw className="w-3 h-3 text-muted-foreground animate-spin ml-auto" />}
             </div>
-            <TrendChart data={trend} />
+            <SafeWidget label="Trend Chart">
+              <TrendChart data={trend} />
+            </SafeWidget>
           </div>
           <div className="glass rounded-xl p-4">
             <div className="flex items-center gap-2 mb-3">
               <Activity className="w-4 h-4 text-violet-400" />
               <span className="text-xs font-semibold text-foreground">Category Split</span>
             </div>
-            <CategoryChart data={kpis.typeBreakdown ?? {}} />
+            <SafeWidget label="Category Chart">
+              <CategoryChart data={kpis.typeBreakdown} isLoading={isLoading} />
+            </SafeWidget>
           </div>
         </div>
       </motion.div>
@@ -175,9 +180,11 @@ export default function DashboardPage() {
       {/* Top deals */}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}>
         <SectionHeader title="Top Deals by Score" subtitle="Ranked by combined relevance + credibility" accent="green" />
-        <div className="glass rounded-xl p-4">
-          <TrendingDeals articles={articles.slice(0, 8)} />
-        </div>
+        <SafeWidget label="Top Deals">
+          <div className="glass rounded-xl p-4">
+            <TrendingDeals articles={articles.slice(0, 8)} />
+          </div>
+        </SafeWidget>
       </motion.div>
 
     </div>

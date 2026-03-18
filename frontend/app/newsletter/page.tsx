@@ -12,15 +12,26 @@ import type { Newsletter, NewsletterHighlight, NewsletterDeal } from '@/types';
 import { DEAL_TYPE_CONFIG } from '@/lib/utils';
 import { MOCK_NEWSLETTER } from '@/lib/mockData';
 import { NeonBadge, SectionHeader } from '@/components/ui/GlowCard';
+import { SafeWidget } from '@/components/ui/ErrorBoundary';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 // ── Fetch ─────────────────────────────────────────────────────────────────────
 
 async function fetchNewsletter(): Promise<Newsletter> {
-  const res = await fetch('/api/newsletter');
-  if (!res.ok) { if (res.status === 404) return MOCK_NEWSLETTER; throw new Error(`HTTP ${res.status}`); }
-  return res.json();
+  try {
+    const res = await fetch('/api/newsletter', { signal: AbortSignal.timeout?.(12_000) });
+    if (!res.ok) {
+      if (res.status === 404) return MOCK_NEWSLETTER;
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    // Validate shape before returning
+    if (!data?.header || !Array.isArray(data?.all_deals)) return MOCK_NEWSLETTER;
+    return data;
+  } catch {
+    return MOCK_NEWSLETTER;
+  }
 }
 
 async function triggerPipeline(): Promise<{ job_id: string }> {
@@ -283,9 +294,13 @@ export default function NewsletterPage() {
 
           {/* Key Highlights */}
           <div>
-            <SectionHeader title="Key Highlights" subtitle={`Top ${newsletter.key_highlights.length} deals by relevance`} accent="amber" />
+            <SectionHeader title="Key Highlights" subtitle={`Top ${newsletter.key_highlights?.length ?? 0} deals by relevance`} accent="amber" />
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {newsletter.key_highlights.map((h, i) => <HighlightCard key={i} item={h} rank={i} />)}
+              {(newsletter.key_highlights ?? []).map((h, i) => (
+                <SafeWidget key={i} label={`Highlight ${i + 1}`}>
+                  <HighlightCard item={h} rank={i} />
+                </SafeWidget>
+              ))}
             </div>
           </div>
 

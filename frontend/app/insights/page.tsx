@@ -12,13 +12,14 @@ import { CategoryChart } from '@/components/insights/CategoryChart';
 import { CompanyTrends } from '@/components/insights/CompanyTrends';
 import { TrendChart } from '@/components/dashboard/TrendChart';
 import { DashboardSkeleton } from '@/components/ui/skeleton';
+import { SafeWidget } from '@/components/ui/ErrorBoundary';
 import { cn, DEAL_TYPE_CONFIG, scoreColor } from '@/lib/utils';
 import type { DealType } from '@/types';
 
 const RADAR_COLORS = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B', '#06B6D4', '#F43F5E'];
 
 export default function InsightsPage() {
-  const { data, isLoading } = useDealsData();
+  const { data, isLoading, isFetching } = useDealsData();
   const trend = useTrendData();
   const articles = data?.articles ?? [];
   const summary  = data?.summary ?? null;
@@ -79,16 +80,28 @@ export default function InsightsPage() {
 
       {/* Row 1: Category + Source */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {summary?.type_breakdown && (
-          <CategoryChart data={summary.type_breakdown} />
-        )}
-        <CompanyTrends articles={articles} />
+        <SafeWidget label="Category Chart">
+          <CategoryChart
+            data={summary?.type_breakdown ?? data ? Object.fromEntries(
+              articles.reduce<Map<string, number>>((m, a) => {
+                m.set(a.deal_type_detected, (m.get(a.deal_type_detected) ?? 0) + 1);
+                return m;
+              }, new Map()).entries()
+            ) : null}
+            isLoading={isLoading}
+          />
+        </SafeWidget>
+        <SafeWidget label="Company Trends">
+          <CompanyTrends articles={articles} />
+        </SafeWidget>
       </div>
 
       {/* Row 2: Trend chart + Score distribution */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2">
-          <TrendChart data={trend} />
+          <SafeWidget label="Trend Chart">
+            <TrendChart data={trend} />
+          </SafeWidget>
         </div>
 
         {/* Score distribution */}

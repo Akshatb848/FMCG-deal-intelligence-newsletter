@@ -5,6 +5,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { CommandPalette } from '@/components/layout/CommandPalette';
 import { AIAssistant } from '@/components/ai/AIAssistant';
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 
 export const metadata: Metadata = {
   title: 'FMCG Deal Intelligence | Market Analytics Platform',
@@ -45,7 +46,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
               <Header />
               <main className="flex-1 overflow-y-auto relative">
-                {children}
+                <ErrorBoundary label="Page">
+                  {children}
+                </ErrorBoundary>
               </main>
             </div>
           </div>
