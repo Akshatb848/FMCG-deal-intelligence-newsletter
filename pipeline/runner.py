@@ -114,8 +114,8 @@ def run_pipeline(
         {
             "stage":  "7 – Output Formatting",
             "input":  s4,
-            "output": f"{s4} records → 3 files",
-            "notes":  "Excel workbook (4 sheets) + JSON + CSV.",
+            "output": f"{s4} records → 4 files",
+            "notes":  "Excel workbook (4 sheets) + JSON + CSV + Word (.docx) newsletter.",
         },
     ]
 

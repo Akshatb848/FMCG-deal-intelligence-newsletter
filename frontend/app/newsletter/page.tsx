@@ -5,8 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
 import {
   FileText, RefreshCw, Play, AlertCircle, Loader2,
-  Star, BarChart2, Lightbulb, Award, ChevronDown,
-  ExternalLink, Copy, Check, Download,
+  ChevronDown, ExternalLink, Copy, Check, Download,
+  FileSpreadsheet, FileDown, Table2,
 } from 'lucide-react';
 import type { Newsletter, NewsletterHighlight, NewsletterDeal } from '@/types';
 import { DEAL_TYPE_CONFIG } from '@/lib/utils';
@@ -15,6 +15,7 @@ import { NeonBadge, SectionHeader } from '@/components/ui/GlowCard';
 import { SafeWidget } from '@/components/ui/ErrorBoundary';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { triggerDownload } from '@/lib/api';
 
 // ── Fetch ─────────────────────────────────────────────────────────────────────
 
@@ -198,14 +199,13 @@ export default function NewsletterPage() {
     });
   };
 
-  const handleDownload = () => {
-    if (!newsletter) return;
-    const blob = new Blob([newsletter.text ?? ''], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `newsletter_${newsletter.date}.txt`; a.click();
-    URL.revokeObjectURL(url);
-    toast.success('Downloaded');
+  const handleExport = async (fmt: 'csv' | 'xlsx' | 'docx') => {
+    try {
+      await triggerDownload(fmt);
+      toast.success(`Downloaded ${fmt.toUpperCase()}`, { description: 'File saved to your downloads folder.' });
+    } catch {
+      toast.error(`Export failed — run the pipeline first`);
+    }
   };
 
   return (
@@ -268,16 +268,29 @@ export default function NewsletterPage() {
                 <h2 className="text-lg font-bold text-foreground">{newsletter.header}</h2>
                 <p className="text-sm text-muted-foreground mt-1">{newsletter.date} · {newsletter.total_deals} deals</p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button onClick={handleCopy}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs glass border border-white/10 hover:bg-white/10 transition-colors">
                   {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                   {copied ? 'Copied' : 'Copy'}
                 </button>
-                <button onClick={handleDownload}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors"
+                <button onClick={() => handleExport('csv')}
+                  title="Download CSV"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors hover:opacity-80"
+                  style={{ background: 'rgba(34,211,238,0.10)', borderColor: 'rgba(34,211,238,0.25)', color: '#22d3ee' }}>
+                  <Table2 className="w-3 h-3" />CSV
+                </button>
+                <button onClick={() => handleExport('xlsx')}
+                  title="Download Excel"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors hover:opacity-80"
+                  style={{ background: 'rgba(52,211,153,0.10)', borderColor: 'rgba(52,211,153,0.25)', color: '#34d399' }}>
+                  <FileSpreadsheet className="w-3 h-3" />Excel
+                </button>
+                <button onClick={() => handleExport('docx')}
+                  title="Download Word"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors hover:opacity-80"
                   style={{ background: 'rgba(59,130,246,0.12)', borderColor: 'rgba(59,130,246,0.25)', color: '#60a5fa' }}>
-                  <Download className="w-3 h-3" />Download
+                  <FileDown className="w-3 h-3" />Word
                 </button>
               </div>
             </div>
