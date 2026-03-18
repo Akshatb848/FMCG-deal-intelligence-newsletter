@@ -167,7 +167,7 @@ export default function DashboardPage() {
               <Activity className="w-4 h-4 text-violet-400" />
               <span className="text-xs font-semibold text-foreground">Category Split</span>
             </div>
-            <CategoryChart data={kpis.typeBreakdown} />
+            <CategoryChart data={kpis.typeBreakdown ?? {}} />
           </div>
         </div>
       </motion.div>
