@@ -7,7 +7,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from app.routes.upload   import router as upload_router
 from app.routes.jobs     import router as jobs_router
@@ -29,6 +29,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Health check (used by Railway)
+@app.get("/api/health", tags=["Health"])
+async def health():
+    return JSONResponse({"status": "ok", "version": "2.0.0"})
 
 # API routes
 app.include_router(upload_router,   prefix="/api", tags=["Upload"])
@@ -53,3 +58,4 @@ if os.path.isdir(STATIC_DIR):
         if os.path.isfile(full):
             return FileResponse(full)
         return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+
