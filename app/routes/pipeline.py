@@ -33,6 +33,11 @@ _RAW_DATA_PATH = os.path.join(
 )
 _DEFAULT_DATA_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+    "data", "fmcg_deals_500.csv",
+)
+# Fallback to original small dataset if 500-record file not found
+_FALLBACK_DATA_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
     "data", "raw_articles.csv",
 )
 
@@ -75,9 +80,10 @@ async def get_processed_data():
     articles = job_store.get_articles(job["job_id"])
     summary = job.get("summary", {})
     return JSONResponse({
-        "count":    len(articles),
-        "summary":  summary,
-        "articles": articles,
+        "count":                       len(articles),
+        "summary":                     summary,
+        "total_invalid_links_removed": summary.get("total_invalid_links_removed", 0),
+        "articles":                    articles,
     })
 
 
@@ -110,17 +116,19 @@ async def run_pipeline_default():
     raw_articles.csv dataset. Returns immediately with a job_id; poll
     GET /jobs/{job_id} for status.
     """
-    if not os.path.exists(_DEFAULT_DATA_PATH):
+    data_path = _DEFAULT_DATA_PATH
+    if not os.path.exists(data_path):
+        data_path = _FALLBACK_DATA_PATH
+    if not os.path.exists(data_path):
         raise HTTPException(
             404,
-            f"Default dataset not found at '{_DEFAULT_DATA_PATH}'. "
-            "Upload a file via POST /upload and use POST /jobs instead.",
+            f"Default dataset not found. Upload a file via POST /upload and use POST /jobs instead.",
         )
 
     config_dict = DEFAULT_FMCG_CONFIG.to_dict()
 
     # Register a synthetic file_id pointing at the default CSV
-    file_id = job_store.register_file(_DEFAULT_DATA_PATH)
+    file_id = job_store.register_file(data_path)
     job_id  = job_store.create_job(file_id, config_dict)
 
     def _run():
@@ -132,7 +140,7 @@ async def run_pipeline_default():
                 job_store.add_progress(job_id, stage, inp, out, message)
 
             result = run_pipeline(
-                data_path=_DEFAULT_DATA_PATH,
+                data_path=data_path,
                 output_dir=output_dir,
                 config=DEFAULT_FMCG_CONFIG,
                 progress_cb=progress_cb,

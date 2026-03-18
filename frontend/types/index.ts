@@ -16,7 +16,11 @@ export interface Article {
   credibility_score: number;
   source_tier: number | null;
   credibility_flag: string;
-  // Stage 5 – Summarization fields
+  // Stage 5 – Link Validation fields
+  link_valid?: boolean | null;
+  link_status?: number | null;
+  link_check_note?: string;
+  // Stage 6 – Summarization fields
   ai_summary?: string;
   company?: string;
   deal_value?: string;
@@ -54,9 +58,12 @@ export interface PipelineSummary {
   total_input: number;
   after_dedup: number;
   after_relevance: number;
+  after_credibility?: number;
+  after_link_validation?: number;
   final_count: number;
   blocked: number;
   dropped: number;
+  total_invalid_links_removed?: number;
   type_breakdown: Record<string, number>;
   domain_name: string;
 }
@@ -173,6 +180,7 @@ export interface Newsletter {
   insights: string[];
   deal_type_breakdown: Record<string, number>;
   pipeline_summary: NewsletterPipelineStep[];
+  total_invalid_links_removed?: number;
   text: string;
 }
 

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, ExternalLink, Bookmark, BookmarkCheck, TrendingUp } from 'lucide-react';
+import { ChevronDown, ExternalLink, Bookmark, BookmarkCheck, TrendingUp, CheckCircle2, XCircle, HelpCircle } from 'lucide-react';
 import { cn, DEAL_TYPE_CONFIG, timeAgo, SOURCE_TIER_COLOR, SOURCE_TIER_LABEL, scoreColor } from '@/lib/utils';
 import { useStore } from '@/store/useStore';
 import { toast } from 'sonner';
@@ -22,6 +22,8 @@ export function DealCard({ article, index = 0 }: DealCardProps) {
   const tierClr  = SOURCE_TIER_COLOR[article.source_tier ?? 0];
   const tierLbl  = SOURCE_TIER_LABEL[article.source_tier ?? 0];
   const sColor   = scoreColor(article.relevance_score);
+  const hasValidUrl = article.url && article.url !== '#' && article.url.startsWith('http');
+  const linkValid = article.link_valid;
 
   const toggleSave = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -70,15 +72,42 @@ export function DealCard({ article, index = 0 }: DealCardProps) {
               <span className={cn('text-[10px] font-medium', tierClr)}>
                 {article.source} · {tierLbl}
               </span>
+              {/* Link validity badge */}
+              {linkValid === true && (
+                <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-400">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Verified
+                </span>
+              )}
+              {linkValid === false && (
+                <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-rose-400">
+                  <XCircle className="w-3 h-3" />
+                  Unverified
+                </span>
+              )}
               <span className="text-[10px] text-muted-foreground ml-auto">
                 {timeAgo(article.published_date)}
               </span>
             </div>
 
-            {/* Title */}
-            <h3 className="text-sm font-semibold text-foreground leading-snug mb-1.5">
-              {article.title}
-            </h3>
+            {/* Title — clickable if valid URL */}
+            {hasValidUrl ? (
+              <a
+                href={article.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="block text-sm font-semibold text-foreground leading-snug mb-1.5
+                           hover:text-primary hover:underline transition-colors"
+              >
+                {article.title}
+                <ExternalLink className="inline w-3 h-3 ml-1 opacity-60" />
+              </a>
+            ) : (
+              <h3 className="text-sm font-semibold text-foreground leading-snug mb-1.5">
+                {article.title}
+              </h3>
+            )}
 
             {/* Summary preview */}
             {!expanded && (
@@ -161,14 +190,30 @@ export function DealCard({ article, index = 0 }: DealCardProps) {
                 ))}
               </div>
 
-              {/* Source flag */}
+              {/* Source + date + link status */}
+              <div className="flex items-center gap-3 text-[10px] text-muted-foreground flex-wrap">
+                <span className="font-medium text-foreground/70">{article.source}</span>
+                <span>{article.published_date}</span>
+                {linkValid === true && (
+                  <span className="flex items-center gap-0.5 text-emerald-400 font-medium">
+                    <CheckCircle2 className="w-3 h-3" /> Link verified
+                  </span>
+                )}
+                {linkValid === false && (
+                  <span className="flex items-center gap-0.5 text-rose-400 font-medium">
+                    <XCircle className="w-3 h-3" /> {article.link_check_note ?? 'Link invalid'}
+                  </span>
+                )}
+              </div>
+
+              {/* Credibility flag */}
               <p className="text-[10px] text-muted-foreground">
                 {article.credibility_flag}
               </p>
 
               {/* Actions */}
               <div className="flex items-center gap-2">
-                {article.url && article.url !== '#' && (
+                {hasValidUrl && (
                   <a
                     href={article.url}
                     target="_blank"
@@ -178,7 +223,7 @@ export function DealCard({ article, index = 0 }: DealCardProps) {
                                transition-colors"
                   >
                     <ExternalLink className="w-3 h-3" />
-                    Read original
+                    Read original source
                   </a>
                 )}
                 <button

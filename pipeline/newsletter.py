@@ -162,6 +162,7 @@ def _build_newsletter_sheet(ws, articles: list[dict], pipeline_log: list[dict], 
         bg = WHITE if i % 2 == 0 else LIGHT_BG
         pub_date = article.get("published_date", "")
         title    = article.get("title", "")
+        url      = article.get("url", "")
         summary  = (article.get("summary", "") or "")[:200]
         if len(article.get("summary", "") or "") > 200:
             summary += "…"
@@ -172,7 +173,16 @@ def _build_newsletter_sheet(ws, articles: list[dict], pipeline_log: list[dict], 
 
         _w(ws, row, 2, pub_date, size=9, bg=bg, align_h="center", border=True)
         ws.merge_cells(start_row=row, start_column=3, end_row=row, end_column=4)
-        _w(ws, row, 3, title, bold=True, size=9, bg=bg, wrap=True, border=True)
+        # Title as clickable hyperlink
+        title_cell = ws.cell(row=row, column=3, value=title)
+        if url and url.startswith("http"):
+            title_cell.hyperlink = url
+            title_cell.font = Font(bold=True, color="0563C1", underline="single", size=9, name="Calibri")
+        else:
+            title_cell.font = _font(bold=True, size=9)
+        title_cell.fill = _hex_fill(bg)
+        title_cell.alignment = _align(wrap=True)
+        title_cell.border = _border()
         ws.merge_cells(start_row=row, start_column=5, end_row=row, end_column=6)
         _w(ws, row, 5, summary, size=8, bg=bg, wrap=True, color=GREY_TEXT, border=True)
         _w(ws, row, 7, source, size=9, bg=bg, align_h="center", border=True)
@@ -250,19 +260,33 @@ def _build_summary_sheet(ws, articles: list[dict]):
     ws.add_chart(chart, f"B{row + len(chart_categories) + 2}")
 
 
+def _hyperlink_cell(ws, row: int, col: int, url: str, display: str, bg: str):
+    """Write a clickable hyperlink into an Excel cell."""
+    cell = ws.cell(row=row, column=col, value=display)
+    if url and url.startswith("http"):
+        cell.hyperlink = url
+        cell.font = Font(color="0563C1", underline="single", size=9, name="Calibri")
+    else:
+        cell.font = _font(size=9, color=GREY_TEXT)
+    cell.fill = _hex_fill(bg)
+    cell.alignment = _align(wrap=True)
+    cell.border = _border()
+    return cell
+
+
 def _build_articles_sheet(ws, articles: list[dict]):
     ws.sheet_view.showGridLines = True
     headers = [
         "ID", "Title", "Source", "Published Date", "Category",
         "Domain Score", "Deal Score", "Recency Score", "Credibility Score",
-        "Relevance Score", "Source Tier", "Credibility Flag", "URL",
+        "Relevance Score", "Source Tier", "Credibility Flag", "Link Valid", "URL",
     ]
     field_map = [
         "id", "title", "source", "published_date", "deal_type_detected",
         "score_domain", "score_deal", "score_recency", "credibility_score",
-        "relevance_score", "source_tier", "credibility_flag", "url",
+        "relevance_score", "source_tier", "credibility_flag", "link_valid", "url",
     ]
-    col_widths = [6, 50, 18, 14, 18, 13, 12, 13, 17, 15, 12, 30, 40]
+    col_widths = [6, 50, 18, 14, 18, 13, 12, 13, 17, 15, 12, 30, 10, 40]
 
     for i, (h, w) in enumerate(zip(headers, col_widths), start=1):
         ws.column_dimensions[get_column_letter(i)].width = w
@@ -273,15 +297,31 @@ def _build_articles_sheet(ws, articles: list[dict]):
         cell.border = _border()
     ws.row_dimensions[1].height = 20
 
+    # URL column index (1-based)
+    url_col = len(field_map)
+
     for r, article in enumerate(articles, start=2):
         bg = LIGHT_BG if r % 2 == 0 else WHITE
         for c, field in enumerate(field_map, start=1):
-            val = article.get(field, "")
-            cell = ws.cell(row=r, column=c, value=val)
-            cell.font = _font(size=9)
-            cell.fill = _hex_fill(bg)
-            cell.alignment = _align(wrap=True)
-            cell.border = _border()
+            if field == "url":
+                url_val = article.get("url", "")
+                _hyperlink_cell(ws, r, c, url_val, url_val[:60] if url_val else "", bg)
+            elif field == "link_valid":
+                lv = article.get("link_valid")
+                val = "✓" if lv else ("✗" if lv is False else "?")
+                color = GREEN_OK if lv else ("C0392B" if lv is False else GREY_TEXT)
+                cell = ws.cell(row=r, column=c, value=val)
+                cell.font = _font(bold=True, color=color, size=9)
+                cell.fill = _hex_fill(bg)
+                cell.alignment = _align(h="center")
+                cell.border = _border()
+            else:
+                val = article.get(field, "")
+                cell = ws.cell(row=r, column=c, value=val)
+                cell.font = _font(size=9)
+                cell.fill = _hex_fill(bg)
+                cell.alignment = _align(wrap=True)
+                cell.border = _border()
         ws.row_dimensions[r].height = 30
 
 
@@ -429,6 +469,47 @@ def _build_docx(
         r_sum = summary_p.add_run(article.get("summary", "")[:300])
         _set_run(r_sum, size=10, rgb=(50, 60, 80))
 
+        # Clickable source URL
+        url_val = article.get("url", "")
+        if url_val and url_val.startswith("http"):
+            url_p = doc.add_paragraph()
+            url_p.paragraph_format.left_indent = Cm(0.5)
+            r_url = url_p.add_run(f"Source: {url_val[:100]}")
+            _set_run(r_url, size=8, rgb=(5, 99, 193), italic=True)
+            # Word hyperlink via relationship
+            try:
+                from docx.oxml.ns import qn
+                from docx.oxml import OxmlElement
+                from lxml import etree
+                r_url.clear()
+                hyperlink = OxmlElement("w:hyperlink")
+                r_id = url_p.part.relate_to(
+                    url_val,
+                    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink",
+                    is_external=True,
+                )
+                hyperlink.set(qn("r:id"), r_id)
+                new_run = OxmlElement("w:r")
+                rPr = OxmlElement("w:rPr")
+                color_el = OxmlElement("w:color")
+                color_el.set(qn("w:val"), "0563C1")
+                u_el = OxmlElement("w:u")
+                u_el.set(qn("w:val"), "single")
+                sz_el = OxmlElement("w:sz")
+                sz_el.set(qn("w:val"), "16")
+                rPr.append(color_el)
+                rPr.append(u_el)
+                rPr.append(sz_el)
+                new_run.append(rPr)
+                t_el = OxmlElement("w:t")
+                t_el.text = f"Source: {url_val[:100]}"
+                new_run.append(t_el)
+                hyperlink.append(new_run)
+                url_p._p.clear()
+                url_p._p.append(hyperlink)
+            except Exception:
+                pass  # Fallback: plain text URL already set above
+
         if i < 2:
             doc.add_paragraph()
 
@@ -439,12 +520,12 @@ def _build_docx(
     _heading(f"  ALL DEALS  ({len(top_articles)} records)", level=2, size=13, rgb=(27, 58, 92))
     doc.add_paragraph()
 
-    deals_table = doc.add_table(rows=1, cols=5)
+    deals_table = doc.add_table(rows=1, cols=6)
     deals_table.style = "Table Grid"
     deals_table.alignment = WD_TABLE_ALIGNMENT.CENTER
 
-    header_texts = ["Date", "Title", "Source", "Deal Type", "Score"]
-    header_widths = [Cm(2.5), Cm(7.0), Cm(3.0), Cm(3.0), Cm(1.8)]
+    header_texts = ["Date", "Title", "Source", "Deal Type", "Score", "URL"]
+    header_widths = [Cm(2.2), Cm(5.5), Cm(2.8), Cm(2.8), Cm(1.5), Cm(4.5)]
     for col_idx, (hdr, width) in enumerate(zip(header_texts, header_widths)):
         cell = deals_table.cell(0, col_idx)
         cell.width = width
@@ -461,11 +542,46 @@ def _build_docx(
             article.get("source", ""),
             article.get("deal_type_detected", "Other"),
             f"{article.get('relevance_score', 0):.1f}",
+            article.get("url", ""),
         ]
         for col_idx, val in enumerate(values):
             row_cells[col_idx].text = ""
-            r = row_cells[col_idx].paragraphs[0].add_run(str(val))
-            _set_run(r, size=8, rgb=(26, 26, 46))
+            if col_idx == 5 and val and val.startswith("http"):
+                # Clickable hyperlink in URL column
+                r = row_cells[col_idx].paragraphs[0].add_run(val[:60])
+                _set_run(r, size=7, rgb=(5, 99, 193))
+                try:
+                    from docx.oxml.ns import qn
+                    from docx.oxml import OxmlElement
+                    r.clear()
+                    hyperlink = OxmlElement("w:hyperlink")
+                    r_id = row_cells[col_idx].paragraphs[0].part.relate_to(
+                        val,
+                        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink",
+                        is_external=True,
+                    )
+                    hyperlink.set(qn("r:id"), r_id)
+                    new_run = OxmlElement("w:r")
+                    rPr = OxmlElement("w:rPr")
+                    color_el = OxmlElement("w:color")
+                    color_el.set(qn("w:val"), "0563C1")
+                    u_el = OxmlElement("w:u")
+                    u_el.set(qn("w:val"), "single")
+                    sz_el = OxmlElement("w:sz")
+                    sz_el.set(qn("w:val"), "14")
+                    rPr.extend([color_el, u_el, sz_el])
+                    new_run.append(rPr)
+                    t_el = OxmlElement("w:t")
+                    t_el.text = val[:60]
+                    new_run.append(t_el)
+                    hyperlink.append(new_run)
+                    row_cells[col_idx].paragraphs[0]._p.clear()
+                    row_cells[col_idx].paragraphs[0]._p.append(hyperlink)
+                except Exception:
+                    pass
+            else:
+                r = row_cells[col_idx].paragraphs[0].add_run(str(val))
+                _set_run(r, size=8, rgb=(26, 26, 46))
             row_cells[col_idx].paragraphs[0].alignment = (
                 WD_ALIGN_PARAGRAPH.CENTER if col_idx in (0, 3, 4) else WD_ALIGN_PARAGRAPH.LEFT
             )

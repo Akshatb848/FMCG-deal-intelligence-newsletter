@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
 import {
   Newspaper, TrendingUp, Star, ChevronDown, ExternalLink,
-  Award, BarChart2, Lightbulb, Download, Copy, Check,
+  Award, BarChart2, Lightbulb, Download, Copy, Check, ShieldCheck, AlertTriangle,
 } from 'lucide-react';
 import type { Newsletter, NewsletterHighlight, NewsletterDeal } from '@/types';
 import { cn } from '@/lib/utils';
@@ -46,10 +46,23 @@ function HighlightCard({ item, rank }: { item: NewsletterHighlight; rank: number
         <DealBadge type={item.deal_type} />
       </div>
 
-      {/* Title */}
-      <h3 className="text-sm font-semibold text-foreground leading-snug line-clamp-2">
-        {item.title}
-      </h3>
+      {/* Title — clickable link */}
+      {item.url ? (
+        <a
+          href={item.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block text-sm font-semibold text-foreground leading-snug line-clamp-2
+                     hover:text-primary hover:underline transition-colors"
+        >
+          {item.title}
+          <ExternalLink className="inline w-3 h-3 ml-1 opacity-50" />
+        </a>
+      ) : (
+        <h3 className="text-sm font-semibold text-foreground leading-snug line-clamp-2">
+          {item.title}
+        </h3>
+      )}
 
       {/* Company + value */}
       <div className="flex items-center gap-2 flex-wrap">
@@ -72,13 +85,18 @@ function HighlightCard({ item, rank }: { item: NewsletterHighlight; rank: number
 
       {/* Footer */}
       <div className="flex items-center justify-between pt-1 border-t border-white/[0.06]">
-        <span className="text-[10px] text-muted-foreground">{item.source} · {item.published_date}</span>
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[10px] text-muted-foreground font-medium">{item.source}</span>
+          <span className="text-[10px] text-muted-foreground">{item.published_date}</span>
+        </div>
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-semibold text-primary">Score {item.relevance_score}</span>
           {item.url && (
             <a href={item.url} target="_blank" rel="noopener noreferrer"
-               className="text-muted-foreground hover:text-foreground transition-colors">
+               className="flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
+               title="Open original source">
               <ExternalLink className="w-3 h-3" />
+              Source
             </a>
           )}
         </div>
@@ -230,6 +248,19 @@ export function NewsletterView({ newsletter }: { newsletter: Newsletter }) {
             <p className="text-sm text-muted-foreground mt-1">
               {newsletter.date} · {newsletter.total_deals} deals analysed
             </p>
+            {/* Link validation summary */}
+            <div className="flex items-center gap-3 mt-2 flex-wrap">
+              <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 font-medium bg-emerald-500/10 px-2 py-0.5 rounded">
+                <ShieldCheck className="w-3 h-3" />
+                All links verified
+              </span>
+              {(newsletter.total_invalid_links_removed ?? 0) > 0 && (
+                <span className="inline-flex items-center gap-1 text-[11px] text-amber-400 font-medium bg-amber-500/10 px-2 py-0.5 rounded">
+                  <AlertTriangle className="w-3 h-3" />
+                  {newsletter.total_invalid_links_removed} invalid links removed
+                </span>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
