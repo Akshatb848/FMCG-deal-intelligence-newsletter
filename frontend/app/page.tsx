@@ -7,6 +7,7 @@ import {
   ShieldCheck, RefreshCw, BarChart2, Link2Off,
 } from 'lucide-react';
 import { useDealsData, useKPIs, useTrendData } from '@/hooks/useDeals';
+import { useStore } from '@/store/useStore';
 import { TrendChart } from '@/components/dashboard/TrendChart';
 import { TrendingDeals } from '@/components/dashboard/TrendingDeals';
 import { CategoryChart } from '@/components/insights/CategoryChart';
@@ -25,6 +26,7 @@ export default function DashboardPage() {
   const { data, isLoading, refetch, isFetching } = useDealsData();
   const kpis  = useKPIs(data?.articles ?? []);
   const trend = useTrendData();
+  const setCurrentJobId = useStore((s) => s.setCurrentJobId);
 
   const [pipelineRunning,  setPipelineRunning]  = useState(false);
   const [pipelineComplete, setPipelineComplete] = useState(false);
@@ -46,6 +48,7 @@ export default function DashboardPage() {
       });
       es.addEventListener('complete', () => {
         setPipelineRunning(false); setPipelineComplete(true); es.close();
+        setCurrentJobId(job_id);
         refetch();
         toast.success('Pipeline complete — dashboard refreshed');
       });

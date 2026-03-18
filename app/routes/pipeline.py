@@ -27,19 +27,12 @@ _DOWNLOAD_MIME = {
 
 router = APIRouter()
 
-_RAW_DATA_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-    "data", "raw_data.json",
-)
-_DEFAULT_DATA_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-    "data", "fmcg_deals_500.csv",
-)
-# Fallback to original small dataset if 500-record file not found
-_FALLBACK_DATA_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-    "data", "raw_articles.csv",
-)
+_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data")
+_RAW_DATA_PATH      = os.path.join(_DATA_DIR, "raw_data.json")
+_DEFAULT_DATA_PATH  = os.path.join(_DATA_DIR, "fmcg_deals_500.csv")
+_FALLBACK_DATA_PATH = os.path.join(_DATA_DIR, "raw_articles.csv")
+# Persisted results — survives server restarts so dashboard always shows latest run
+_LATEST_RESULTS_PATH = os.path.join(_DATA_DIR, "latest_results.json")
 
 
 def _latest_complete_job() -> dict | None:
@@ -71,20 +64,35 @@ async def get_raw_data():
 @router.get("/processed-data")
 async def get_processed_data():
     """Return processed articles (post-dedup, relevance-filtered, credibility-scored)."""
+    # First try in-memory latest job
     job = _latest_complete_job()
-    if not job:
-        raise HTTPException(
-            404,
-            "No completed pipeline run found. POST /run-pipeline to generate data.",
-        )
-    articles = job_store.get_articles(job["job_id"])
-    summary = job.get("summary", {})
-    return JSONResponse({
-        "count":                       len(articles),
-        "summary":                     summary,
-        "total_invalid_links_removed": summary.get("total_invalid_links_removed", 0),
-        "articles":                    articles,
-    })
+    if job:
+        articles = job_store.get_articles(job["job_id"])
+        summary = job.get("summary", {})
+        return JSONResponse({
+            "count":                       len(articles),
+            "summary":                     summary,
+            "total_invalid_links_removed": summary.get("total_invalid_links_removed", 0),
+            "articles":                    articles,
+        })
+
+    # Fall back to persisted results from last run (survives server restarts)
+    if os.path.exists(_LATEST_RESULTS_PATH):
+        with open(_LATEST_RESULTS_PATH, encoding="utf-8") as f:
+            saved = json.load(f)
+        articles = saved.get("articles", [])
+        summary  = saved.get("summary", {})
+        return JSONResponse({
+            "count":                       len(articles),
+            "summary":                     summary,
+            "total_invalid_links_removed": summary.get("total_invalid_links_removed", 0),
+            "articles":                    articles,
+        })
+
+    raise HTTPException(
+        404,
+        "No completed pipeline run found. POST /run-pipeline to generate data.",
+    )
 
 
 # ── GET /newsletter ───────────────────────────────────────────────────────────
@@ -151,6 +159,15 @@ async def run_pipeline_default():
                 result["output_paths"],
                 newsletter=result.get("newsletter"),
             )
+
+            # Persist results to disk so dashboard survives server restarts
+            try:
+                articles = job_store.get_articles(job_id)
+                with open(_LATEST_RESULTS_PATH, "w", encoding="utf-8") as f:
+                    json.dump({"summary": result["summary"], "articles": articles}, f)
+            except Exception:
+                pass  # non-critical — in-memory results are still available
+
         except Exception as e:
             job_store.set_job_error(job_id, str(e))
 

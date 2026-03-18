@@ -238,13 +238,6 @@ def validate_single(url: str, trusted_bypass: bool = True) -> dict:
         return {"link_valid": False, "link_status": status, "link_check_note": f"Redirect not resolved (HTTP {status})"}
 
     if status == 404:
-        # 404 on trusted domain: article may have been paywalled/moved
-        if trusted_bypass and trusted:
-            return {
-                "link_valid": True,
-                "link_status": 404,
-                "link_check_note": f"Trusted domain — article may have moved (HTTP 404, accepted)",
-            }
         return {"link_valid": False, "link_status": 404, "link_check_note": "Article not found (HTTP 404)"}
 
     if status and status >= 500:
