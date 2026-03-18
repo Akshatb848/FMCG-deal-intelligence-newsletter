@@ -105,6 +105,7 @@ export const useStore = create<StoreState>()(
     {
       name: 'fmcg-intelligence-store',
       partialize: (s) => ({
+        currentJobId:     s.currentJobId,
         savedArticles:    s.savedArticles,
         sidebarCollapsed: s.sidebarCollapsed,
         filters:          s.filters,

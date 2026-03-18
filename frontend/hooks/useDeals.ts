@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { getMockResults, getResults } from '@/lib/api';
+import { getMockResults, getResults, getProcessedData } from '@/lib/api';
 import { useStore } from '@/store/useStore';
 import type { Article, KPIData, TrendPoint } from '@/types';
 import { MOCK_TREND_DATA } from '@/lib/mockData';
@@ -15,17 +15,27 @@ export function useDealsData() {
   return useQuery({
     queryKey: ['deals', jobId],
     queryFn: async () => {
+      // If we have a specific job, try it first
       if (jobId) {
         try {
           return await getResults(jobId);
         } catch {
-          // Fall back to mock if API unavailable
+          // Job may be stale (server restart) — fall through to processed-data
         }
+      }
+      // Try the latest completed pipeline run from the backend
+      try {
+        const data = await getProcessedData();
+        if (data && Array.isArray(data.articles) && data.articles.length > 0) {
+          return { summary: data.summary, articles: data.articles, progress: [] };
+        }
+      } catch {
+        // Backend offline — fall through to mock
       }
       return getMockResults();
     },
-    staleTime: 5 * 60 * 1000,  // 5 min
-    gcTime:   15 * 60 * 1000,  // 15 min
+    staleTime: 0,              // always re-fetch on mount to avoid stale data
+    gcTime:   15 * 60 * 1000, // 15 min
   });
 }
 
