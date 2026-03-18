@@ -1,72 +1,56 @@
 #!/usr/bin/env python3
 """
-Deal Intelligence Platform — CLI entry point.
+Deal Intelligence Platform — Entry point.
 
-Usage
------
-    # Run web server (recommended)
-    python main.py serve
-
-    # Run pipeline on a file directly (CLI mode, uses FMCG defaults)
-    python main.py --data path/to/file.csv --output my_output/
-
-    # Custom domain pipeline
-    python main.py --data articles.csv --domain "Tech M&A" --output out/
+Railway / production: reads $PORT env var automatically.
+Local dev:  python main.py            → http://localhost:8000
+CLI mode:   python main.py --data file.csv --output out/
 """
 
+import os
 import argparse
-import sys
+
+# ── Expose app at module level so `uvicorn main:app` also works ──────────────
+from app.server import app  # noqa: F401  (used by uvicorn main:app)
 
 
 def cli_run(data_path, output_dir, domain):
     from pipeline.config import DEFAULT_FMCG_CONFIG, PipelineConfig
     from pipeline.runner import run_pipeline
 
-    if domain and domain.lower() != "fmcg":
-        # Use blank config (no domain keywords) so user gets unfiltered output
-        config = PipelineConfig(domain_name=domain)
-    else:
-        config = DEFAULT_FMCG_CONFIG
-
-    result = run_pipeline(data_path=data_path, output_dir=output_dir, config=config)
+    config = PipelineConfig(domain_name=domain) if (domain and domain.lower() != "fmcg") else DEFAULT_FMCG_CONFIG
+    result  = run_pipeline(data_path=data_path, output_dir=output_dir, config=config)
     summary = result["summary"]
 
     print("=" * 60)
     print(f"  {config.domain_name} — Pipeline Complete")
     print("=" * 60)
     print(f"  {summary['total_input']} input → {summary['final_count']} final records")
-    print()
-    print("  Output files:")
+    print("\n  Output files:")
     for fmt, path in result["output_paths"].items():
         print(f"    [{fmt.upper()}]  {path}")
-    print()
-    print("  Category breakdown:")
+    print("\n  Category breakdown:")
     for cat, cnt in sorted(summary["type_breakdown"].items(), key=lambda x: -x[1]):
         print(f"    {cnt:3d}  {cat}")
 
 
-def serve(host, port):
+def serve(host: str = "0.0.0.0", port: int | None = None):
     import uvicorn
-    print(f"\n  Deal Intelligence Platform")
-    print(f"  → Open http://{host}:{port} in your browser\n")
+    # Railway injects $PORT — always prefer it over the default
+    port = port or int(os.environ.get("PORT", 8000))
+    print(f"\n  Deal Intelligence Platform  →  http://{host}:{port}\n")
     uvicorn.run("app.server:app", host=host, port=port, reload=False)
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Deal Intelligence Platform",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__,
-    )
+    parser = argparse.ArgumentParser(description="Deal Intelligence Platform")
     subparsers = parser.add_subparsers(dest="command")
 
-    # `serve` subcommand
     serve_p = subparsers.add_parser("serve", help="Start the web server")
     serve_p.add_argument("--host", default="0.0.0.0")
-    serve_p.add_argument("--port", type=int, default=8000)
+    serve_p.add_argument("--port", type=int, default=None)
 
-    # CLI pipeline flags (no subcommand = legacy mode)
-    parser.add_argument("--data", "-d", default=None)
+    parser.add_argument("--data",   "-d", default=None)
     parser.add_argument("--output", "-o", default="output")
     parser.add_argument("--domain", default="FMCG")
 
@@ -77,8 +61,7 @@ def main():
     elif args.data:
         cli_run(args.data, args.output, args.domain)
     else:
-        # Default: start the web server
-        serve("0.0.0.0", 8000)
+        serve()  # default: start web server, reads $PORT from env
 
 
 if __name__ == "__main__":
