@@ -91,8 +91,28 @@ export async function getResults(jobId: string): Promise<ResultsSummaryResponse>
   return apiFetch<ResultsSummaryResponse>(`/results/${jobId}/summary`);
 }
 
-export function getDownloadUrl(jobId: string, fmt: 'json' | 'csv' | 'xlsx') {
+export function getDownloadUrl(jobId: string, fmt: 'json' | 'csv' | 'xlsx' | 'docx') {
   return `${BASE_URL}/results/${jobId}/download/${fmt}`;
+}
+
+/** Download from the latest completed pipeline run — no job_id needed. */
+export function getLatestDownloadUrl(fmt: 'json' | 'csv' | 'xlsx' | 'docx') {
+  return `${BASE_URL}/download/${fmt}`;
+}
+
+export async function triggerDownload(fmt: 'csv' | 'xlsx' | 'docx'): Promise<void> {
+  const url = getLatestDownloadUrl(fmt);
+  const labels: Record<string, string> = {
+    csv:  'FMCG_Deal_Intelligence_Report.csv',
+    xlsx: 'FMCG_Deal_Intelligence_Report.xlsx',
+    docx: 'FMCG_Deal_Intelligence_Newsletter.docx',
+  };
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = labels[fmt];
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
 // ── Mock fallback ─────────────────────────────────────────────────────────────

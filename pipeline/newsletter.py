@@ -1,6 +1,6 @@
 """
-Stage 5 – Report Generation
-Produces JSON, CSV, and a formatted Excel workbook.
+Stage 7 – Report Generation
+Produces JSON, CSV, Excel workbook, and Word (.docx) document.
 Domain name and labels are driven by PipelineConfig — fully generic.
 """
 
@@ -13,6 +13,15 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.chart import BarChart, Reference
+
+try:
+    from docx import Document
+    from docx.shared import Pt, RGBColor as DocxRGB, Inches, Cm
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.table import WD_TABLE_ALIGNMENT
+    _DOCX_AVAILABLE = True
+except ImportError:
+    _DOCX_AVAILABLE = False
 
 from .config import PipelineConfig, DEFAULT_FMCG_CONFIG
 
@@ -305,6 +314,188 @@ def _build_pipeline_log_sheet(ws, pipeline_log: list[dict]):
         row += 1
 
 
+def _build_docx(
+    articles: list[dict],
+    pipeline_log: list[dict],
+    config: PipelineConfig,
+) -> "Document":
+    """Build a professional Word newsletter document."""
+    doc = Document()
+
+    # ── Page margins ─────────────────────────────────────────────────────────
+    for section in doc.sections:
+        section.top_margin    = Cm(1.8)
+        section.bottom_margin = Cm(1.8)
+        section.left_margin   = Cm(2.2)
+        section.right_margin  = Cm(2.2)
+
+    issue_date = date.today().strftime("%B %d, %Y")
+    top_articles = sorted(articles, key=lambda a: a.get("relevance_score", 0), reverse=True)
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+    def _set_run(run, bold=False, size=11, rgb=None, italic=False):
+        run.bold   = bold
+        run.italic = italic
+        run.font.size = Pt(size)
+        if rgb:
+            run.font.color.rgb = DocxRGB(*rgb)
+
+    def _heading(text, level=1, bold=True, size=14, rgb=(27, 58, 92), align=WD_ALIGN_PARAGRAPH.LEFT):
+        p = doc.add_paragraph()
+        p.alignment = align
+        run = p.add_run(text)
+        _set_run(run, bold=bold, size=size, rgb=rgb)
+        return p
+
+    def _divider():
+        p = doc.add_paragraph("─" * 80)
+        p.runs[0].font.color.rgb = DocxRGB(200, 210, 225)
+        p.runs[0].font.size = Pt(7)
+        return p
+
+    # ── Title banner ──────────────────────────────────────────────────────────
+    title_p = doc.add_paragraph()
+    title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r1 = title_p.add_run(config.domain_name.upper())
+    _set_run(r1, bold=True, size=22, rgb=(27, 58, 92))
+
+    sub_p = doc.add_paragraph()
+    sub_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r2 = sub_p.add_run(f"Intelligence Report  |  {issue_date}")
+    _set_run(r2, italic=True, size=11, rgb=(13, 115, 119))
+
+    _divider()
+
+    # ── KPI summary ───────────────────────────────────────────────────────────
+    doc.add_paragraph()
+    _heading("  KEY METRICS", level=2, size=12, rgb=(13, 115, 119))
+
+    deal_types: dict[str, int] = {}
+    for a in top_articles:
+        dt = a.get("deal_type_detected", "Other")
+        deal_types[dt] = deal_types.get(dt, 0) + 1
+
+    kpi_table = doc.add_table(rows=2, cols=4)
+    kpi_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    kpi_table.style = "Table Grid"
+    kpi_labels = ["TOTAL DEALS", "ACQUISITIONS", "INVESTMENTS", "DIVESTITURES"]
+    kpi_values = [
+        str(len(top_articles)),
+        str(deal_types.get("Acquisition", 0) + deal_types.get("M&A", 0) + deal_types.get("Merger", 0)),
+        str(deal_types.get("Investment", 0)),
+        str(deal_types.get("Divestiture", 0)),
+    ]
+    for col, (lbl, val) in enumerate(zip(kpi_labels, kpi_values)):
+        lbl_cell = kpi_table.cell(0, col)
+        lbl_cell.text = ""
+        r = lbl_cell.paragraphs[0].add_run(lbl)
+        _set_run(r, bold=True, size=8, rgb=(27, 58, 92))
+        lbl_cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        val_cell = kpi_table.cell(1, col)
+        val_cell.text = ""
+        r2 = val_cell.paragraphs[0].add_run(val)
+        _set_run(r2, bold=True, size=20, rgb=(13, 115, 119))
+        val_cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    doc.add_paragraph()
+    _divider()
+
+    # ── Key highlights ────────────────────────────────────────────────────────
+    doc.add_paragraph()
+    _heading("  TOP 3 KEY HIGHLIGHTS", level=2, size=13, rgb=(27, 58, 92))
+    doc.add_paragraph()
+
+    rank_labels = ["🥇 #1", "🥈 #2", "🥉 #3"]
+    for i, article in enumerate(top_articles[:3]):
+        rank_p = doc.add_paragraph()
+        r_rank = rank_p.add_run(f"{rank_labels[i]}  ")
+        _set_run(r_rank, bold=True, size=11, rgb=(201, 150, 43))
+
+        r_title = rank_p.add_run(article.get("title", ""))
+        _set_run(r_title, bold=True, size=11, rgb=(27, 58, 92))
+
+        meta_p = doc.add_paragraph()
+        meta_p.paragraph_format.left_indent = Cm(0.5)
+        r_meta = meta_p.add_run(
+            f"{article.get('source', '')}  ·  {article.get('published_date', '')}  "
+            f"·  {article.get('deal_type_detected', '')}  "
+            f"·  Score: {article.get('relevance_score', 0):.1f}"
+        )
+        _set_run(r_meta, size=9, rgb=(90, 99, 117), italic=True)
+
+        summary_p = doc.add_paragraph()
+        summary_p.paragraph_format.left_indent = Cm(0.5)
+        r_sum = summary_p.add_run(article.get("summary", "")[:300])
+        _set_run(r_sum, size=10, rgb=(50, 60, 80))
+
+        if i < 2:
+            doc.add_paragraph()
+
+    _divider()
+
+    # ── All deals table ───────────────────────────────────────────────────────
+    doc.add_paragraph()
+    _heading(f"  ALL DEALS  ({len(top_articles)} records)", level=2, size=13, rgb=(27, 58, 92))
+    doc.add_paragraph()
+
+    deals_table = doc.add_table(rows=1, cols=5)
+    deals_table.style = "Table Grid"
+    deals_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+
+    header_texts = ["Date", "Title", "Source", "Deal Type", "Score"]
+    header_widths = [Cm(2.5), Cm(7.0), Cm(3.0), Cm(3.0), Cm(1.8)]
+    for col_idx, (hdr, width) in enumerate(zip(header_texts, header_widths)):
+        cell = deals_table.cell(0, col_idx)
+        cell.width = width
+        cell.text = ""
+        r = cell.paragraphs[0].add_run(hdr)
+        _set_run(r, bold=True, size=9, rgb=(255, 255, 255))
+        cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    for article in top_articles:
+        row_cells = deals_table.add_row().cells
+        values = [
+            article.get("published_date", ""),
+            article.get("title", ""),
+            article.get("source", ""),
+            article.get("deal_type_detected", "Other"),
+            f"{article.get('relevance_score', 0):.1f}",
+        ]
+        for col_idx, val in enumerate(values):
+            row_cells[col_idx].text = ""
+            r = row_cells[col_idx].paragraphs[0].add_run(str(val))
+            _set_run(r, size=8, rgb=(26, 26, 46))
+            row_cells[col_idx].paragraphs[0].alignment = (
+                WD_ALIGN_PARAGRAPH.CENTER if col_idx in (0, 3, 4) else WD_ALIGN_PARAGRAPH.LEFT
+            )
+
+    _divider()
+
+    # ── Pipeline log ──────────────────────────────────────────────────────────
+    doc.add_paragraph()
+    _heading("  PIPELINE EXECUTION LOG", level=2, size=13, rgb=(27, 58, 92))
+    doc.add_paragraph()
+
+    for entry in pipeline_log:
+        log_p = doc.add_paragraph()
+        r_stage = log_p.add_run(f"[{entry.get('stage', '')}]  ")
+        _set_run(r_stage, bold=True, size=10, rgb=(13, 115, 119))
+        r_io = log_p.add_run(f"{entry.get('input', '')} → {entry.get('output', '')}  ")
+        _set_run(r_io, bold=True, size=10, rgb=(27, 58, 92))
+        r_notes = log_p.add_run(entry.get("notes", ""))
+        _set_run(r_notes, size=9, rgb=(90, 99, 117), italic=True)
+
+    doc.add_paragraph()
+    footer_p = doc.add_paragraph(
+        f"Generated by {config.domain_name} Pipeline  ·  {issue_date}  ·  For internal use only"
+    )
+    footer_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _set_run(footer_p.runs[0], size=8, rgb=(90, 99, 117), italic=True)
+
+    return doc
+
+
 def generate(
     articles: list[dict],
     pipeline_log: list[dict],
@@ -352,9 +543,27 @@ def generate(
 
     wb.save(xlsx_path)
 
-    msg = f"Generated {len(articles)} records → JSON, CSV, Excel"
+    # Word (.docx)
+    docx_path = os.path.join(output_dir, f"{safe_name}_Newsletter.docx")
+    if _DOCX_AVAILABLE:
+        try:
+            doc = _build_docx(articles, pipeline_log, config)
+            doc.save(docx_path)
+        except Exception as exc:
+            print(f"[Newsletter] Warning: docx generation failed: {exc}")
+            docx_path = None
+    else:
+        print("[Newsletter] python-docx not installed — skipping .docx output")
+        docx_path = None
+
+    output_files = {"json": json_path, "csv": csv_path, "xlsx": xlsx_path}
+    if docx_path:
+        output_files["docx"] = docx_path
+
+    fmt_list = ", ".join(k.upper() for k in output_files)
+    msg = f"Generated {len(articles)} records → {fmt_list}"
     print(f"[Newsletter] {msg}")
     if progress_cb:
         progress_cb("newsletter", len(articles), len(articles), msg)
 
-    return {"json": json_path, "csv": csv_path, "xlsx": xlsx_path}
+    return output_files

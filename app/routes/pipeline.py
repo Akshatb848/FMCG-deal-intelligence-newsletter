@@ -11,12 +11,19 @@ import os
 import json
 import threading
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 
 from app import job_store
 from app.models import JobState
 from pipeline.config import DEFAULT_FMCG_CONFIG
 from pipeline.runner import run_pipeline
+
+_DOWNLOAD_MIME = {
+    "json": "application/json",
+    "csv":  "text/csv",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
 
 router = APIRouter()
 
@@ -145,4 +152,39 @@ async def run_pipeline_default():
     return JSONResponse(
         {"job_id": job_id, "status": "running", "message": "Pipeline started. Poll GET /jobs/{job_id} for progress."},
         status_code=202,
+    )
+
+
+# ── GET /download/{fmt} ───────────────────────────────────────────────────────
+
+@router.get("/download/{fmt}")
+async def download_latest(fmt: str):
+    """
+    Download the latest completed pipeline output.
+    fmt: json | csv | xlsx | docx
+    No job_id required — serves from the most recent completed run.
+    """
+    if fmt not in _DOWNLOAD_MIME:
+        raise HTTPException(400, f"Format must be one of: {', '.join(_DOWNLOAD_MIME)}")
+
+    job = _latest_complete_job()
+    if not job:
+        raise HTTPException(
+            404,
+            "No completed pipeline run found. POST /run-pipeline first.",
+        )
+
+    output_files = job.get("output_files") or {}
+    file_path = output_files.get(fmt)
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(404, f"Output file for format '{fmt}' not found. Re-run the pipeline.")
+
+    safe_name = "FMCG_Deal_Intelligence"
+    filename = f"{safe_name}_Report.{fmt}"
+
+    return FileResponse(
+        path=file_path,
+        media_type=_DOWNLOAD_MIME[fmt],
+        filename=filename,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

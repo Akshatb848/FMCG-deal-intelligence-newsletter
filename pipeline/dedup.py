@@ -111,6 +111,14 @@ def dedup(
     after_exact, n_exact = exact_dedup(articles, source_priority)
     after_near, n_near = near_dedup(after_exact, source_priority, config.dedup_threshold)
 
+    # Tag each surviving article with dedup metadata
+    for a in after_near:
+        a["dedup_flag"] = "original"
+        a["dedup_method"] = (
+            "exact_title_hash + tfidf_cosine"
+            f" (threshold={config.dedup_threshold})"
+        )
+
     msg = (
         f"{len(articles)} → {len(after_near)} records "
         f"({n_exact} exact + {n_near} near-duplicate removals)"
