@@ -272,7 +272,7 @@ export default function NewsletterPage() {
             </div>
 
             <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {Object.entries(newsletter.deal_type_breakdown).map(([type, count]) => (
+              {Object.entries(newsletter.deal_type_breakdown ?? {}).map(([type, count]) => (
                 <div key={type} className="px-3 py-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
                   <p className="text-[9px] text-muted-foreground uppercase tracking-wide">{type}</p>
                   <p className="text-xl font-black gradient-text-primary">{count}</p>

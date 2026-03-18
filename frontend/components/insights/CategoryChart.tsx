@@ -37,13 +37,30 @@ const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: { name
 };
 
 export function CategoryChart({ data }: CategoryChartProps) {
-  const chartData = Object.entries(data).map(([name, value]) => ({
+  const safeData = (data && typeof data === 'object') ? data : {};
+  const chartData = Object.entries(safeData).map(([name, value]) => ({
     name,
     value,
     color: COLORS[name as DealType] ?? COLORS['Other'],
   }));
 
   const total = chartData.reduce((s, d) => s + d.value, 0);
+
+  if (chartData.length === 0) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="glass rounded-xl border border-white/[0.08] p-4 flex flex-col items-center justify-center min-h-[200px]"
+      >
+        <div className="text-muted-foreground text-xs text-center">
+          <p className="font-semibold mb-1">No deal type data</p>
+          <p className="opacity-60">Run the pipeline to populate this chart</p>
+        </div>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div
