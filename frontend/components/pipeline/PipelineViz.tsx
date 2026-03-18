@@ -6,7 +6,7 @@ import {
   Database, GitMerge, Filter, ShieldCheck,
   Brain, Newspaper, Download, ChevronDown,
   CheckCircle2, Loader2, Circle, AlertTriangle,
-  ArrowRight,
+  ArrowRight, Link2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -94,6 +94,18 @@ const STAGES: PipelineStage[] = [
     outputLabel: 'Credible records',
   },
   {
+    id: 'link_validation',
+    label: 'Link Validation',
+    shortLabel: 'Links',
+    icon: Link2,
+    color: '#06b6d4',
+    glowClass: 'glow-cyan',
+    description: 'Validate all source URLs',
+    details: 'Checks URL format, domain whitelist, and HTTP status (200 only). Removes records with broken, redirected, or placeholder links. Trusted domains bypass network errors.',
+    inputLabel: 'Credible records',
+    outputLabel: 'Link-valid records',
+  },
+  {
     id: 'summarization',
     label: 'Summarization',
     shortLabel: 'Summarize',
@@ -124,10 +136,10 @@ const STAGES: PipelineStage[] = [
     icon: Download,
     color: '#818cf8',
     glowClass: 'glow-violet',
-    description: 'Export JSON, CSV, Excel workbook',
-    details: 'Generates Excel with 4 tabs (Report, Summary, All Records, Pipeline Log) + processed_articles.json + processed_articles.csv.',
+    description: 'Export JSON, CSV, Excel, Word',
+    details: 'Generates Excel with 4 tabs (Report, Summary, All Records, Pipeline Log) + processed_articles.json + processed_articles.csv + Newsletter.docx. All URLs are clickable hyperlinks.',
     inputLabel: 'All data',
-    outputLabel: '3 output files',
+    outputLabel: '4 output files',
   },
 ];
 
@@ -391,7 +403,7 @@ export function PipelineViz({
             Agent Pipeline
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            7-stage intelligence extraction · click any node for details
+            8-stage intelligence extraction · click any node for details
           </p>
         </div>
 

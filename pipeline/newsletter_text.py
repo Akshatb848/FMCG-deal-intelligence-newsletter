@@ -142,6 +142,17 @@ def build_newsletter(
     # Deal type breakdown
     type_counts: Counter = Counter(a.get("deal_type_detected", "Other") for a in articles)
 
+    # Extract link validation stats from pipeline_log if present
+    total_invalid_links = 0
+    for stage in pipeline_log:
+        if "5 – Link Validation" in stage.get("stage", ""):
+            notes = stage.get("notes", "")
+            import re
+            m = re.search(r"Removed (\d+) record", notes)
+            if m:
+                total_invalid_links = int(m.group(1))
+            break
+
     return {
         "header":       f"{config.domain_name} – Daily Brief",
         "date":         date.today().isoformat(),
@@ -152,6 +163,7 @@ def build_newsletter(
         "insights":     insights,
         "deal_type_breakdown": dict(type_counts),
         "pipeline_summary": pipeline_log,
+        "total_invalid_links_removed": total_invalid_links,
     }
 
 
@@ -160,10 +172,14 @@ def newsletter_to_text(newsletter: dict) -> str:
     lines = []
     sep = "=" * 60
 
+    invalid_note = ""
+    if newsletter.get("total_invalid_links_removed", 0) > 0:
+        invalid_note = f"  |  Invalid links removed: {newsletter['total_invalid_links_removed']}"
+
     lines += [
         sep,
         f"  {newsletter['header'].upper()}",
-        f"  Date: {newsletter['date']}  |  Total Deals: {newsletter['total_deals']}",
+        f"  Date: {newsletter['date']}  |  Total Deals: {newsletter['total_deals']}{invalid_note}",
         sep,
         "",
     ]

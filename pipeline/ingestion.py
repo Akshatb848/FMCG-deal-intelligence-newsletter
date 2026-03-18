@@ -52,7 +52,8 @@ def _normalise(raw: dict, config: PipelineConfig) -> dict | None:
         return val.strip()
 
     title    = get(config.col_title, "title")
-    body     = get(config.col_body, "summary") or get("body", "") or get("content", "") or get("text", "")
+    body     = (get(config.col_body, "summary") or get("description", "")
+                or get("body", "") or get("content", "") or get("text", ""))
     source   = get(config.col_source, "source") or get("publisher", "") or get("outlet", "")
     date_str = get(config.col_date, "published_date") or get("date", "") or get("pub_date", "")
     url      = get(config.col_url, "url") or get("link", "") or get("href", "")

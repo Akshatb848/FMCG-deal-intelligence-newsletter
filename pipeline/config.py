@@ -82,6 +82,7 @@ DEFAULT_FMCG_CONFIG = PipelineConfig(
     col_url="url",
     col_category="category",
     primary_keywords=[
+        # Global majors
         "unilever", "nestle", "nestlé", "procter", "gamble", "p&g",
         "coca-cola", "cocacola", "pepsi", "pepsico", "ab inbev",
         "diageo", "kraft heinz", "mondelez", "mars", "ferrero",
@@ -90,6 +91,24 @@ DEFAULT_FMCG_CONFIG = PipelineConfig(
         "henkel", "haldirams", "haldiram", "lactalis",
         "hindustan unilever", "hul", "minimalist", "notco", "bodyarmor",
         "siete foods", "clif bar", "ghost energy",
+        # Additional global FMCG
+        "campbell", "campbell's", "smucker", "hershey", "kellogg",
+        "kellogg's", "kellanova", "heineken", "carlsberg", "pernod ricard",
+        "beam suntory", "brown-forman", "campari", "bacardi",
+        "imperial brands", "british american tobacco", "philip morris",
+        "colgate-palmolive", "church & dwight", "spectrum brands",
+        "energizer", "clorox", "sc johnson", "prestige consumer",
+        "host", "hostess", "poppi", "rxbar", "rao", "aviation gin",
+        "liquid iv", "liquid i.v.", "organic india", "yoga bar",
+        # Indian FMCG
+        "marico", "dabur", "godrej consumer", "emami", "bajaj consumer",
+        "itc", "tata consumer", "britannia", "wipro consumer",
+        "jyothy labs", "himalaya", "patanjali", "amul", "mother dairy",
+        "mamaearth", "honasa", "nykaa", "boat lifestyle", "wow skin",
+        "epigamia", "oziva", "slurrp farm", "beardo",
+        # Deal-specific brands
+        "kellanova", "pringles", "pop-tarts", "cheez-it",
+        "twinkies", "ding dongs", "hostess brands",
     ],
     secondary_keywords=[
         "fmcg", "consumer goods", "consumer staples", "packaged goods",

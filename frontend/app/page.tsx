@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { useState } from 'react';
 import {
   TrendingUp, Award, Activity,
-  ShieldCheck, RefreshCw, BarChart2,
+  ShieldCheck, RefreshCw, BarChart2, Link2Off,
 } from 'lucide-react';
 import { useDealsData, useKPIs, useTrendData } from '@/hooks/useDeals';
 import { TrendChart } from '@/components/dashboard/TrendChart';
@@ -54,10 +54,10 @@ export default function DashboardPage() {
         toast.error('Pipeline error');
       });
     } catch {
-      // Demo simulation when backend is offline
-      const stages = ['ingestion','dedup','relevance','credibility','summarization','newsletter_gen','newsletter'];
+      // Demo simulation when backend is offline (8 stages now)
+      const stages = ['ingestion','dedup','relevance','credibility','link_validation','summarization','newsletter_gen','newsletter'];
       let i = 0;
-      const counts = [38, 30, 25, 22, 22, 22, 22];
+      const counts = [563, 420, 280, 230, 195, 195, 195, 195];
       const simulate = () => {
         if (i >= stages.length) {
           setPipelineRunning(false); setPipelineComplete(true);
@@ -124,14 +124,16 @@ export default function DashboardPage() {
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
           <SectionHeader title="Pipeline Funnel" subtitle="Record survival through each stage" accent="violet" />
           <div className="glass rounded-xl p-5">
-            <div className="flex items-end gap-2 h-24">
+            <div className="flex items-end gap-2 h-28">
               {([
-                { label: 'Input',    value: summary.total_input,     color: '#60a5fa' },
-                { label: 'Dedup',    value: summary.after_dedup,     color: '#a78bfa' },
-                { label: 'Relevant', value: summary.after_relevance, color: '#22d3ee' },
-                { label: 'Final',    value: summary.final_count,     color: '#34d399' },
-              ] as const).map(({ label, value, color }, i) => {
-                const pct = (value / summary.total_input) * 100;
+                { label: 'Input',       value: summary.total_input,                            color: '#60a5fa' },
+                { label: 'Deduped',     value: summary.after_dedup,                            color: '#a78bfa' },
+                { label: 'Relevant',    value: summary.after_relevance,                        color: '#22d3ee' },
+                { label: 'Credible',    value: summary.after_credibility ?? summary.final_count, color: '#f59e0b' },
+                { label: 'Links OK',    value: summary.after_link_validation ?? summary.final_count, color: '#06b6d4' },
+                { label: 'Final',       value: summary.final_count,                            color: '#34d399' },
+              ]).map(({ label, value, color }, i) => {
+                const pct = summary.total_input > 0 ? (value / summary.total_input) * 100 : 0;
                 return (
                   <div key={label} className="flex-1 flex flex-col items-center gap-1">
                     <span className="text-[10px] font-mono font-bold" style={{ color }}>{value}</span>
@@ -142,11 +144,18 @@ export default function DashboardPage() {
                       className="w-full rounded-t-lg"
                       style={{ background: `linear-gradient(to top, ${color}55, ${color}25)`, border: `1px solid ${color}30` }}
                     />
-                    <span className="text-[9px] text-muted-foreground">{label}</span>
+                    <span className="text-[9px] text-muted-foreground text-center leading-tight">{label}</span>
                   </div>
                 );
               })}
             </div>
+            {/* Invalid links stat */}
+            {(summary.total_invalid_links_removed ?? 0) > 0 && (
+              <div className="mt-3 flex items-center gap-2 text-[11px] text-amber-400 bg-amber-500/10 rounded-lg px-3 py-2">
+                <Link2Off className="w-3.5 h-3.5 flex-shrink-0" />
+                <span><strong>{summary.total_invalid_links_removed}</strong> records excluded due to broken or invalid links (stage 5 – link validation)</span>
+              </div>
+            )}
           </div>
         </motion.div>
       )}

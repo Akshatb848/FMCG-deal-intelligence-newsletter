@@ -1,14 +1,15 @@
 """
-Pipeline runner — wraps all seven stages with progress callbacks.
+Pipeline runner — wraps all eight stages with progress callbacks.
 Used by both the web API (async jobs) and the CLI.
 
 Stage 1  – Ingestion
 Stage 2  – De-duplication
 Stage 3  – Relevance Filtering
 Stage 4  – Credibility Check
-Stage 5  – Summarization
-Stage 6  – Newsletter Text Generation
-Stage 7  – Output Formatting (JSON / CSV / Excel)
+Stage 5  – Link Validation  (NEW)
+Stage 6  – Summarization
+Stage 7  – Newsletter Text Generation
+Stage 8  – Output Formatting (JSON / CSV / Excel / Word)
 """
 
 from .config           import PipelineConfig, DEFAULT_FMCG_CONFIG
@@ -16,6 +17,7 @@ from .ingestion        import ingest
 from .dedup            import dedup
 from .relevance        import filter_relevance
 from .credibility      import check_credibility
+from .link_validator   import validate_links
 from .summarization    import summarize
 from .newsletter_text  import generate_newsletter
 from .newsletter       import generate as generate_outputs
@@ -28,7 +30,7 @@ def run_pipeline(
     progress_cb=None,
 ) -> dict:
     """
-    Execute the full 7-stage pipeline.
+    Execute the full 8-stage pipeline.
 
     progress_cb(stage, input_count, output_count, message) is called after
     each stage so callers can stream progress to the UI.
@@ -57,10 +59,16 @@ def run_pipeline(
 
     credible.sort(key=lambda a: a.get("relevance_score", 0), reverse=True)
 
-    # ── Stage 5: Summarization ────────────────────────────────────────────────
-    summarized = summarize(credible, config, progress_cb)
+    # ── Stage 5: Link Validation ──────────────────────────────────────────────
+    link_valid, link_invalid, total_invalid_links = validate_links(
+        credible, config, progress_cb
+    )
+    s5 = len(link_valid)
 
-    # ── Pipeline log (built before stage 6 so it can be embedded in newsletter) ──
+    # ── Stage 6: Summarization ────────────────────────────────────────────────
+    summarized = summarize(link_valid, config, progress_cb)
+
+    # ── Pipeline log (built before stage 7 so it can be embedded in newsletter) ─
     pipeline_log = [
         {
             "stage":  "1 – Ingestion",
@@ -97,32 +105,41 @@ def run_pipeline(
             ),
         },
         {
-            "stage":  "5 – Summarization",
+            "stage":  "5 – Link Validation",
             "input":  s4,
-            "output": s4,
+            "output": s5,
+            "notes":  (
+                f"URL format + HTTP status check (200 only) + domain whitelist. "
+                f"Removed {total_invalid_links} record(s) with broken or invalid links."
+            ),
+        },
+        {
+            "stage":  "6 – Summarization",
+            "input":  s5,
+            "output": s5,
             "notes":  (
                 "Extractive summarization: 2-line summaries per article. "
                 "Extracted company names and deal values."
             ),
         },
         {
-            "stage":  "6 – Newsletter Generation",
-            "input":  s4,
+            "stage":  "7 – Newsletter Generation",
+            "input":  s5,
             "output": "1 newsletter",
             "notes":  "Structured newsletter: header + key highlights + all deals + insights.",
         },
         {
-            "stage":  "7 – Output Formatting",
-            "input":  s4,
-            "output": f"{s4} records → 4 files",
+            "stage":  "8 – Output Formatting",
+            "input":  s5,
+            "output": f"{s5} records → 4 files",
             "notes":  "Excel workbook (4 sheets) + JSON + CSV + Word (.docx) newsletter.",
         },
     ]
 
-    # ── Stage 6: Newsletter Text Generation ───────────────────────────────────
+    # ── Stage 7: Newsletter Text Generation ───────────────────────────────────
     newsletter = generate_newsletter(summarized, pipeline_log, config, progress_cb)
 
-    # ── Stage 7: Generate file outputs ────────────────────────────────────────
+    # ── Stage 8: Generate file outputs ────────────────────────────────────────
     output_paths = generate_outputs(summarized, pipeline_log, output_dir, config, progress_cb)
 
     # ── Deal type breakdown ───────────────────────────────────────────────────
@@ -132,14 +149,17 @@ def run_pipeline(
         type_counts[dt] = type_counts.get(dt, 0) + 1
 
     summary = {
-        "total_input":     s1,
-        "after_dedup":     s2,
-        "after_relevance": s3,
-        "final_count":     s4,
-        "blocked":         len(blocked),
-        "dropped":         s2 - s3,
-        "type_breakdown":  type_counts,
-        "domain_name":     config.domain_name,
+        "total_input":               s1,
+        "after_dedup":               s2,
+        "after_relevance":           s3,
+        "after_credibility":         s4,
+        "after_link_validation":     s5,
+        "final_count":               s5,
+        "blocked":                   len(blocked),
+        "dropped":                   s2 - s3,
+        "total_invalid_links_removed": total_invalid_links,
+        "type_breakdown":            type_counts,
+        "domain_name":               config.domain_name,
     }
 
     return {
