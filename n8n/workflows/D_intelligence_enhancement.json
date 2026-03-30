@@ -1,0 +1,232 @@
+{
+  "name": "FMCG Intelligence — D: Intelligence Enhancement",
+  "nodes": [
+    {
+      "id": "d0000001-0000-0000-0000-000000000001",
+      "name": "Every Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "hours", "hoursInterval": 1 }]
+        }
+      }
+    },
+    {
+      "id": "d0000001-0000-0000-0000-000000000002",
+      "name": "Fetch Recent Processed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/news_processed",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "created_at", "value": "gte.{{ new Date(Date.now() - 24*60*60*1000).toISOString() }}" },
+            { "name": "select", "value": "id,headline,companies,deal_type,geography,confidence_score,trending_flag" },
+            { "name": "order", "value": "created_at.desc" },
+            { "name": "limit", "value": "200" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d0000001-0000-0000-0000-000000000003",
+      "name": "Fetch Company Mentions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 480],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/company_mentions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "created_at", "value": "gte.{{ new Date(Date.now() - 48*60*60*1000).toISOString() }}" },
+            { "name": "select", "value": "company_name,mention_type" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d0000001-0000-0000-0000-000000000004",
+      "name": "Merge Data",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [680, 380],
+      "parameters": { "mode": "combine", "combinationMode": "mergeByPosition", "options": {} }
+    },
+    {
+      "id": "d0000001-0000-0000-0000-000000000005",
+      "name": "Frequency Analysis + Trend Detection",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 380],
+      "parameters": {
+        "jsCode": "const TREND_THRESHOLD = parseInt($env.TREND_THRESHOLD || '3');\n\nconst articles = Array.isArray(items[0].json) ? items[0].json : [];\nconst mentions  = Array.isArray(items[1]?.json) ? items[1].json : [];\n\n// ── Company frequency from mentions table ────────────────────\nconst companyFreq = {};\nfor (const m of mentions) {\n  const name = (m.company_name || '').toLowerCase();\n  if (name) companyFreq[name] = (companyFreq[name] || 0) + 1;\n}\n\n// ── Deal type frequency ──────────────────────────────────────\nconst dealTypeFreq = {};\nfor (const art of articles) {\n  const dt = art.deal_type || 'none';\n  dealTypeFreq[dt] = (dealTypeFreq[dt] || 0) + 1;\n}\n\n// ── Geography frequency ──────────────────────────────────────\nconst geoFreq = {};\nfor (const art of articles) {\n  const geo = art.geography || 'Unknown';\n  geoFreq[geo] = (geoFreq[geo] || 0) + 1;\n}\n\n// ── Topic clustering by company ──────────────────────────────\nconst clusters = {};\nfor (const art of articles) {\n  const companies = JSON.parse(art.companies || '[]');\n  for (const co of companies) {\n    const key = co.toLowerCase();\n    if (!clusters[key]) clusters[key] = [];\n    clusters[key].push(art.id);\n  }\n}\n\n// ── Identify trending companies ──────────────────────────────\nconst trending = Object.entries(companyFreq)\n  .filter(([, count]) => count >= TREND_THRESHOLD)\n  .sort((a, b) => b[1] - a[1])\n  .slice(0, 20)\n  .map(([name, count]) => ({ name, count }));\n\n// ── Identify trending article IDs ────────────────────────────\nconst trendingCompanyNames = new Set(trending.map(t => t.name));\nconst trendingArticleIds = articles\n  .filter(art => {\n    const companies = JSON.parse(art.companies || '[]');\n    return companies.some(co => trendingCompanyNames.has(co.toLowerCase()));\n  })\n  .map(art => art.id);\n\n// ── Trend score per article ───────────────────────────────────\nconst trendScores = {};\nfor (const art of articles) {\n  const companies = JSON.parse(art.companies || '[]');\n  const score = companies.reduce((sum, co) => {\n    return sum + (companyFreq[co.toLowerCase()] || 0);\n  }, 0);\n  trendScores[art.id] = score;\n}\n\nconst topCompanies = Object.entries(companyFreq)\n  .sort((a, b) => b[1] - a[1])\n  .slice(0, 10)\n  .map(([name, count]) => ({ name, count }));\n\nconst topDealTypes = Object.entries(dealTypeFreq)\n  .sort((a, b) => b[1] - a[1])\n  .map(([type, count]) => ({ type, count }));\n\nconst topGeographies = Object.entries(geoFreq)\n  .sort((a, b) => b[1] - a[1])\n  .slice(0, 10)\n  .map(([geo, count]) => ({ geo, count }));\n\nconsole.log(`Trend analysis: ${trending.length} trending companies, ${trendingArticleIds.length} trending articles`);\n\nreturn [{\n  json: {\n    trending_article_ids: trendingArticleIds,\n    trend_scores: trendScores,\n    top_companies: topCompanies,\n    top_deal_types: topDealTypes,\n    top_geographies: topGeographies,\n    total_articles: articles.length,\n    trending_companies: trending,\n  }\n}];"
+      }
+    },
+    {
+      "id": "d0000001-0000-0000-0000-000000000006",
+      "name": "Prepare Trend Updates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 380],
+      "parameters": {
+        "jsCode": "const analysis = items[0].json;\nconst trendingIds = analysis.trending_article_ids || [];\nconst trendScores  = analysis.trend_scores || {};\n\n// Build update records for each trending article\nreturn trendingIds.map(id => ({\n  json: {\n    id,\n    trending_flag: true,\n    trend_score: trendScores[id] || 1,\n    _analysis: analysis,\n  }\n}));"
+      }
+    },
+    {
+      "id": "d0000001-0000-0000-0000-000000000007",
+      "name": "Batch Trending Updates",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1340, 380],
+      "parameters": { "batchSize": 20 }
+    },
+    {
+      "id": "d0000001-0000-0000-0000-000000000008",
+      "name": "Update Trending Flags",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 380],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/news_processed?id=eq.{{ $json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ trending_flag: $json.trending_flag, trend_score: $json.trend_score }) }}",
+        "options": { "timeout": 10000 }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "d0000001-0000-0000-0000-000000000009",
+      "name": "Generate Trend Narrative",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 560],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $env.ANTHROPIC_API_KEY }}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 512, messages: [{ role: 'user', content: `Write a concise 2-paragraph FMCG deal intelligence trend summary based on this data. Be specific, use real company names and numbers. No marketing language.\\n\\nTop Companies: ${JSON.stringify($('Frequency Analysis + Trend Detection').first().json.top_companies)}\\nTop Deal Types: ${JSON.stringify($('Frequency Analysis + Trend Detection').first().json.top_deal_types)}\\nTop Geographies: ${JSON.stringify($('Frequency Analysis + Trend Detection').first().json.top_geographies)}\\nTotal Articles: ${$('Frequency Analysis + Trend Detection').first().json.total_articles}` }] }) }}",
+        "options": { "timeout": 30000 }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "d0000001-0000-0000-0000-000000000010",
+      "name": "Save Trend Snapshot",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 480],
+      "parameters": {
+        "jsCode": "const analysis = $('Frequency Analysis + Trend Detection').first().json;\nconst narrativeResp = items[0].json;\nconst narrative = narrativeResp?.content?.[0]?.text || null;\n\nreturn [{\n  json: {\n    snapshot_date: new Date().toISOString().split('T')[0],\n    window_hours: 24,\n    top_companies: JSON.stringify(analysis.top_companies),\n    top_deal_types: JSON.stringify(analysis.top_deal_types),\n    top_geographies: JSON.stringify(analysis.top_geographies),\n    trending_topics: JSON.stringify(analysis.trending_companies),\n    total_articles: analysis.total_articles,\n    trend_narrative: narrative,\n  }\n}];"
+      }
+    },
+    {
+      "id": "d0000001-0000-0000-0000-000000000011",
+      "name": "Upsert Trend Snapshot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 480],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/trend_snapshots",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "resolution=merge-duplicates" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": { "timeout": 10000 }
+      },
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Every Hour": {
+      "main": [
+        [
+          { "node": "Fetch Recent Processed", "type": "main", "index": 0 },
+          { "node": "Fetch Company Mentions", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Fetch Recent Processed": {
+      "main": [[{ "node": "Merge Data", "type": "main", "index": 0 }]]
+    },
+    "Fetch Company Mentions": {
+      "main": [[{ "node": "Merge Data", "type": "main", "index": 1 }]]
+    },
+    "Merge Data": {
+      "main": [[{ "node": "Frequency Analysis + Trend Detection", "type": "main", "index": 0 }]]
+    },
+    "Frequency Analysis + Trend Detection": {
+      "main": [
+        [{ "node": "Prepare Trend Updates", "type": "main", "index": 0 }],
+        [{ "node": "Generate Trend Narrative", "type": "main", "index": 0 }]
+      ]
+    },
+    "Prepare Trend Updates": {
+      "main": [[{ "node": "Batch Trending Updates", "type": "main", "index": 0 }]]
+    },
+    "Batch Trending Updates": {
+      "main": [[{ "node": "Update Trending Flags", "type": "main", "index": 0 }]]
+    },
+    "Generate Trend Narrative": {
+      "main": [[{ "node": "Save Trend Snapshot", "type": "main", "index": 0 }]]
+    },
+    "Save Trend Snapshot": {
+      "main": [[{ "node": "Upsert Trend Snapshot", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1", "saveManualExecutions": true },
+  "id": "fmcg-workflow-d",
+  "meta": { "templateCredsSetupCompleted": false },
+  "versionId": "d0000001-0000-0000-0000-000000000000",
+  "tags": [{ "id": "fmcg-tag-1", "name": "FMCG-Intelligence" }]
+}

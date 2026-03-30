@@ -1,0 +1,181 @@
+{
+  "name": "FMCG Intelligence — B: Dedup & Filter",
+  "nodes": [
+    {
+      "id": "b0000001-0000-0000-0000-000000000001",
+      "name": "Every 30 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 30 }]
+        }
+      }
+    },
+    {
+      "id": "b0000001-0000-0000-0000-000000000002",
+      "name": "Fetch Unprocessed Raw",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/news_raw",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "is_processed", "value": "eq.false" },
+            { "name": "is_duplicate", "value": "eq.false" },
+            { "name": "order", "value": "created_at.asc" },
+            { "name": "limit", "value": "100" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "b0000001-0000-0000-0000-000000000003",
+      "name": "Any Records?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "check-length",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "b0000001-0000-0000-0000-000000000004",
+      "name": "No-op: Nothing to Process",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [900, 460],
+      "parameters": {}
+    },
+    {
+      "id": "b0000001-0000-0000-0000-000000000005",
+      "name": "Split Into Articles",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300],
+      "parameters": {
+        "jsCode": "// items[0].json is the array from Supabase GET\nconst articles = Array.isArray(items[0].json) ? items[0].json : [items[0].json];\nreturn articles.map(a => ({ json: a }));"
+      }
+    },
+    {
+      "id": "b0000001-0000-0000-0000-000000000006",
+      "name": "Fuzzy Dedup + FMCG Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300],
+      "parameters": {
+        "jsCode": "// ── FMCG Deal Keywords ──────────────────────────────────────\nconst FMCG_BRANDS = [\n  'unilever','nestle','nestlé','pepsico','coca-cola','procter','gamble','p&g',\n  'mars','mondelez','kraft','heinz','danone','ab inbev','diageo','reckitt',\n  'colgate','palmolive','campbell','general mills','kellogg','hershey',\n  'ferrero','carlsberg','heineken','smucker','conagra','clorox',\n  // Indian FMCG\n  'hindustan unilever','hul','dabur','marico','itc','tata consumer','godrej',\n  'emami','britannia','haldiram','amul','patanjali','wipro consumer',\n  'bajaj consumer','pidilite','jyothy','zydus wellness',\n];\n\nconst DEAL_KEYWORDS = [\n  'acqui', 'merger', 'merger', 'takeover', 'buyout', 'invest', 'joint venture',\n  'partnership', 'divest', 'spin-off', 'stake', 'funding', 'deal', 'bid',\n  'transaction', 'purchase', 'buys', 'sells', 'selling', 'buying',\n];\n\n// ── Levenshtein distance for fuzzy title matching ────────────\nfunction levenshtein(a, b) {\n  const m = a.length, n = b.length;\n  const dp = Array.from({ length: m + 1 }, (_, i) =>\n    Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))\n  );\n  for (let i = 1; i <= m; i++)\n    for (let j = 1; j <= n; j++)\n      dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1]\n               : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);\n  return dp[m][n];\n}\n\nfunction isSimilarTitle(t1, t2, threshold = 0.85) {\n  const a = t1.toLowerCase().trim();\n  const b = t2.toLowerCase().trim();\n  if (a === b) return true;\n  const maxLen = Math.max(a.length, b.length);\n  if (maxLen === 0) return true;\n  const similarity = 1 - (levenshtein(a, b) / maxLen);\n  return similarity >= threshold;\n}\n\nfunction isFmcgRelevant(title, content) {\n  const text = (title + ' ' + (content || '')).toLowerCase();\n  const hasBrand = FMCG_BRANDS.some(b => text.includes(b));\n  const hasDeal  = DEAL_KEYWORDS.some(k => text.includes(k));\n  return hasBrand && hasDeal;\n}\n\n// ── Process each article ─────────────────────────────────────\nconst seenTitles = [];\nconst results = [];\n\nfor (const item of items) {\n  const art = item.json;\n  const title = art.title || '';\n  const content = art.content || '';\n\n  // Check fuzzy title duplicate against already-seen titles\n  const isDup = seenTitles.some(prev => isSimilarTitle(prev, title));\n\n  const isRelevant = isFmcgRelevant(title, content);\n\n  if (!isDup) seenTitles.push(title);\n\n  results.push({\n    json: {\n      id: art.id,\n      is_duplicate: isDup,\n      is_relevant: !isDup && isRelevant,\n      _title: title,\n      _reason: isDup ? 'duplicate_title' : (!isRelevant ? 'irrelevant' : 'ok'),\n    }\n  });\n}\n\nconsole.log(`Processed ${results.length}: dups=${results.filter(r=>r.json.is_duplicate).length}, irrelevant=${results.filter(r=>!r.json.is_relevant && !r.json.is_duplicate).length}`);\nreturn results;"
+      }
+    },
+    {
+      "id": "b0000001-0000-0000-0000-000000000007",
+      "name": "Batch Updates",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1340, 300],
+      "parameters": { "batchSize": 20, "options": {} }
+    },
+    {
+      "id": "b0000001-0000-0000-0000-000000000008",
+      "name": "Update Flags in DB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 300],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/news_raw?id=eq.{{ $json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ is_duplicate: $json.is_duplicate, is_relevant: $json.is_relevant }) }}",
+        "options": { "timeout": 10000 }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "b0000001-0000-0000-0000-000000000009",
+      "name": "Trigger Workflow C",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.N8N_WEBHOOK_BASE_URL }}/webhook/fmcg-trigger-extraction",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"triggered_by\": \"workflow_b\", \"timestamp\": \"={{ new Date().toISOString() }}\"}",
+        "options": { "timeout": 5000 }
+      },
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Every 30 Minutes": {
+      "main": [[{ "node": "Fetch Unprocessed Raw", "type": "main", "index": 0 }]]
+    },
+    "Fetch Unprocessed Raw": {
+      "main": [[{ "node": "Any Records?", "type": "main", "index": 0 }]]
+    },
+    "Any Records?": {
+      "main": [
+        [{ "node": "Split Into Articles", "type": "main", "index": 0 }],
+        [{ "node": "No-op: Nothing to Process", "type": "main", "index": 0 }]
+      ]
+    },
+    "Split Into Articles": {
+      "main": [[{ "node": "Fuzzy Dedup + FMCG Filter", "type": "main", "index": 0 }]]
+    },
+    "Fuzzy Dedup + FMCG Filter": {
+      "main": [[{ "node": "Batch Updates", "type": "main", "index": 0 }]]
+    },
+    "Batch Updates": {
+      "main": [[{ "node": "Update Flags in DB", "type": "main", "index": 0 }]]
+    },
+    "Update Flags in DB": {
+      "main": [[{ "node": "Trigger Workflow C", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1", "saveManualExecutions": true },
+  "id": "fmcg-workflow-b",
+  "meta": { "templateCredsSetupCompleted": false },
+  "versionId": "b0000001-0000-0000-0000-000000000000",
+  "tags": [{ "id": "fmcg-tag-1", "name": "FMCG-Intelligence" }]
+}
