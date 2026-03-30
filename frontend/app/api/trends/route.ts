@@ -1,19 +1,36 @@
 /**
  * GET /api/trends
- *
- * Returns trend intelligence:
- *  - Latest trend snapshot (hourly)
- *  - Top companies by activity
- *  - Deal type breakdown
- *  - Geographic distribution
- *  - Trending articles
- *
- * Query params:
- *   window_hours  number  (default 24) — 24 | 48 | 168 (7d)
+ * Trend intelligence: latest snapshot, company activity, trending articles.
  */
-
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import type { NewsFeedItem } from '../news/route';
+
+interface TrendSnapshot {
+  snapshot_date:   string;
+  window_hours:    number;
+  top_companies:   { name: string; count: number }[];
+  top_deal_types:  { type: string; count: number }[];
+  top_geographies: { geo: string;  count: number }[];
+  trending_topics: { name: string; count: number }[];
+  total_articles:  number;
+  trend_narrative: string | null;
+  created_at:      string;
+}
+
+interface CompanyActivity {
+  company_name:   string;
+  total_mentions: number;
+  mentions_7d:    number;
+  mentions_24h:   number;
+  deal_types:     string[] | null;
+  geographies:    string[] | null;
+  last_seen_at:   string;
+}
+
+interface ProcessedRow {
+  deal_type: string | null;
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
@@ -21,26 +38,23 @@ export async function GET(req: NextRequest) {
   const validWindow = [24, 48, 168].includes(windowHours) ? windowHours : 24;
 
   try {
-    // Run queries in parallel for performance
-    const [snapshotResult, companiesResult, trendingResult, dealTypeResult] = await Promise.all([
+    const cutoff = new Date(Date.now() - validWindow * 60 * 60 * 1000).toISOString();
 
-      // Latest trend snapshot
+    const [snapshotRes, companiesRes, trendingRes, dealTypeRes] = await Promise.all([
       supabase
         .from('trend_snapshots')
         .select('*')
         .eq('window_hours', validWindow)
         .order('created_at', { ascending: false })
         .limit(1)
-        .single(),
+        .maybeSingle(),
 
-      // Company activity view
       supabase
         .from('v_company_activity')
         .select('company_name,total_mentions,mentions_7d,mentions_24h,deal_types,geographies,last_seen_at')
         .order('total_mentions', { ascending: false })
         .limit(20),
 
-      // Trending articles
       supabase
         .from('v_news_feed')
         .select('id,title,category,deal_type,companies,geography,deal_value,trending_flag,trend_score,source,published_at')
@@ -49,16 +63,14 @@ export async function GET(req: NextRequest) {
         .order('created_at',  { ascending: false })
         .limit(10),
 
-      // Deal type breakdown for the window
       supabase
         .from('news_processed')
         .select('deal_type')
         .eq('published', true)
-        .gte('created_at', new Date(Date.now() - validWindow * 60 * 60 * 1000).toISOString()),
+        .gte('created_at', cutoff),
     ]);
 
-    // Compute deal type breakdown from raw rows
-    const dealTypeRows = dealTypeResult.data ?? [];
+    const dealTypeRows = (dealTypeRes.data ?? []) as ProcessedRow[];
     const dealTypeBreakdown: Record<string, number> = {};
     for (const row of dealTypeRows) {
       const dt = row.deal_type ?? 'none';
@@ -68,37 +80,30 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => b[1] - a[1])
       .map(([type, count]) => ({ type, count }));
 
-    const snapshot = snapshotResult.data;
+    const snapshot = snapshotRes.data as TrendSnapshot | null;
 
     return NextResponse.json(
       {
-        snapshot: snapshot
-          ? {
-              date:              snapshot.snapshot_date,
-              window_hours:      snapshot.window_hours,
-              top_companies:     snapshot.top_companies,
-              top_deal_types:    snapshot.top_deal_types,
-              top_geographies:   snapshot.top_geographies,
-              trending_topics:   snapshot.trending_topics,
-              total_articles:    snapshot.total_articles,
-              trend_narrative:   snapshot.trend_narrative,
-              generated_at:      snapshot.created_at,
-            }
-          : null,
-        companies:         companiesResult.data ?? [],
-        trending_articles: trendingResult.data   ?? [],
+        snapshot: snapshot ? {
+          date:            snapshot.snapshot_date,
+          window_hours:    snapshot.window_hours,
+          top_companies:   snapshot.top_companies,
+          top_deal_types:  snapshot.top_deal_types,
+          top_geographies: snapshot.top_geographies,
+          trending_topics: snapshot.trending_topics,
+          total_articles:  snapshot.total_articles,
+          trend_narrative: snapshot.trend_narrative,
+          generated_at:    snapshot.created_at,
+        } : null,
+        companies:           (companiesRes.data ?? []) as CompanyActivity[],
+        trending_articles:   (trendingRes.data   ?? []) as NewsFeedItem[],
         deal_type_breakdown: dealTypeSorted,
-        window_hours: validWindow,
+        window_hours:        validWindow,
       },
-      {
-        headers: {
-          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
-        },
-      },
+      { headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' } },
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Internal server error';
-    console.error('[/api/trends] Error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

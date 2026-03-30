@@ -1,22 +1,28 @@
 /**
  * GET /api/news
- *
- * Returns published FMCG intelligence articles from Supabase.
- * Falls back to the FastAPI backend if Supabase is not configured.
- *
- * Query params:
- *   page        number   (default 1)
- *   limit       number   (default 20, max 100)
- *   category    string   Deals | Trends | Product Launch | Regulatory | Other
- *   deal_type   string   acquisition | merger | investment | ...
- *   geography   string   free text filter
- *   trending    boolean  only trending articles
- *   search      string   full-text search on headline + summary
- *   sort        string   latest (default) | trending | confidence
+ * Paginated FMCG intelligence feed from Supabase v_news_feed view.
  */
-
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+
+export interface NewsFeedItem {
+  id: string;
+  title: string;
+  summary: string | null;
+  category: string | null;
+  companies: string[];
+  deal_type: string | null;
+  geography: string | null;
+  deal_value: string | null;
+  key_insights: string[];
+  confidence_score: number | null;
+  trending_flag: boolean;
+  trend_score: number;
+  source: string | null;
+  url: string | null;
+  published_at: string | null;
+  created_at: string;
+}
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 20;
@@ -32,22 +38,20 @@ export async function GET(req: NextRequest) {
   const trending  = searchParams.get('trending')  === 'true';
   const search    = searchParams.get('search')?.trim() ?? null;
   const sort      = searchParams.get('sort') ?? 'latest';
-
-  const offset = (page - 1) * limit;
+  const offset    = (page - 1) * limit;
 
   try {
-    let query = supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let query: any = supabase
       .from('v_news_feed')
       .select('*', { count: 'exact' });
 
-    // ── Filters ────────────────────────────────────────────────────────────
     if (category)  query = query.eq('category',  category);
     if (dealType)  query = query.eq('deal_type', dealType);
     if (geography) query = query.ilike('geography', `%${geography}%`);
     if (trending)  query = query.eq('trending_flag', true);
 
     if (search) {
-      // Use Postgres full-text search on headline + summary
       query = query.textSearch(
         'headline',
         search.split(' ').filter(Boolean).join(' | '),
@@ -55,58 +59,41 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // ── Sort ───────────────────────────────────────────────────────────────
     switch (sort) {
       case 'trending':
-        query = query
-          .order('trending_flag', { ascending: false })
-          .order('trend_score',   { ascending: false })
-          .order('created_at',    { ascending: false });
+        query = query.order('trending_flag', { ascending: false }).order('trend_score', { ascending: false }).order('created_at', { ascending: false });
         break;
       case 'confidence':
-        query = query
-          .order('confidence_score', { ascending: false })
-          .order('created_at',       { ascending: false });
+        query = query.order('confidence_score', { ascending: false }).order('created_at', { ascending: false });
         break;
-      case 'latest':
       default:
         query = query.order('created_at', { ascending: false });
     }
 
-    // ── Pagination ─────────────────────────────────────────────────────────
     query = query.range(offset, offset + limit - 1);
 
     const { data, error, count } = await query;
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    if (error) {
-      console.error('[/api/news] Supabase error:', error.message);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    const totalCount = count ?? 0;
+    const articles = (data ?? []) as NewsFeedItem[];
+    const total    = count ?? 0;
 
     return NextResponse.json(
       {
-        articles:    data ?? [],
+        articles,
         pagination: {
-          page,
-          limit,
-          total:        totalCount,
-          total_pages:  Math.ceil(totalCount / limit),
-          has_next:     offset + limit < totalCount,
-          has_prev:     page > 1,
+          page, limit,
+          total,
+          total_pages: Math.ceil(total / limit),
+          has_next:    offset + limit < total,
+          has_prev:    page > 1,
         },
         filters: { category, deal_type: dealType, geography, trending, search, sort },
       },
-      {
-        headers: {
-          'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120',
-        },
-      },
+      { headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' } },
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Internal server error';
-    console.error('[/api/news] Unexpected error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

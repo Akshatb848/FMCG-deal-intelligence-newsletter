@@ -1,12 +1,10 @@
 /**
  * GET /api/news/[id]
- *
- * Returns a single processed article with full detail including
- * related articles from the same cluster.
+ * Single article + related articles from Supabase.
  */
-
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import type { NewsFeedItem } from '../route';
 
 export async function GET(
   _req: NextRequest,
@@ -19,36 +17,34 @@ export async function GET(
   }
 
   try {
-    // Fetch the article from the view
-    const { data: article, error } = await supabase
+    const { data: articleData, error } = await supabase
       .from('v_news_feed')
       .select('*')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
-    if (error || !article) {
+    if (error || !articleData) {
       return NextResponse.json({ error: 'Article not found' }, { status: 404 });
     }
 
-    // Fetch related articles — same companies or same deal_type, recent
-    const companiesArr: string[] = Array.isArray(article.companies) ? article.companies : [];
-    let related: unknown[] = [];
+    const article = articleData as NewsFeedItem;
+    const companies: string[] = Array.isArray(article.companies) ? article.companies : [];
+    let related: NewsFeedItem[] = [];
 
-    if (companiesArr.length > 0) {
-      const { data: relatedData } = await supabase
+    if (companies.length > 0) {
+      const { data: relData } = await supabase
         .from('v_news_feed')
         .select('id,title,category,deal_type,companies,source,published_at,trending_flag')
-        .contains('companies', companiesArr.slice(0, 2))   // any matching company
+        .contains('companies', companies.slice(0, 2))
         .neq('id', id)
         .order('created_at', { ascending: false })
         .limit(5);
 
-      related = relatedData ?? [];
+      related = (relData ?? []) as NewsFeedItem[];
     }
 
-    // If not enough related, fill with same deal_type
     if (related.length < 3 && article.deal_type && article.deal_type !== 'none') {
-      const { data: moreRelated } = await supabase
+      const { data: moreData } = await supabase
         .from('v_news_feed')
         .select('id,title,category,deal_type,companies,source,published_at,trending_flag')
         .eq('deal_type', article.deal_type)
@@ -56,22 +52,17 @@ export async function GET(
         .order('created_at', { ascending: false })
         .limit(5 - related.length);
 
-      const existingIds = new Set((related as { id: string }[]).map(r => r.id));
-      const extra = (moreRelated ?? []).filter((r: { id: string }) => !existingIds.has(r.id));
+      const existing = new Set(related.map(r => r.id));
+      const extra = ((moreData ?? []) as NewsFeedItem[]).filter(r => !existing.has(r.id));
       related = [...related, ...extra];
     }
 
     return NextResponse.json(
       { article, related },
-      {
-        headers: {
-          'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=300',
-        },
-      },
+      { headers: { 'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=300' } },
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Internal server error';
-    console.error(`[/api/news/${id}] Error:`, message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
