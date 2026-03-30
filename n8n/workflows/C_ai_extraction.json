@@ -1,0 +1,310 @@
+{
+  "name": "FMCG Intelligence — C: AI Extraction",
+  "nodes": [
+    {
+      "id": "c0000001-0000-0000-0000-000000000001",
+      "name": "Webhook: Trigger from B",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "parameters": {
+        "path": "fmcg-trigger-extraction",
+        "httpMethod": "POST",
+        "responseMode": "onReceived",
+        "responseData": "firstEntryJson",
+        "options": {}
+      },
+      "webhookId": "fmcg-trigger-extraction"
+    },
+    {
+      "id": "c0000001-0000-0000-0000-000000000002",
+      "name": "Schedule Fallback",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 480],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "hours", "hoursInterval": 2 }]
+        }
+      }
+    },
+    {
+      "id": "c0000001-0000-0000-0000-000000000003",
+      "name": "Fetch Pending Extraction",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 380],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/get_pending_extraction",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"p_limit\": 20}"
+      }
+    },
+    {
+      "id": "c0000001-0000-0000-0000-000000000004",
+      "name": "Any Pending?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [700, 380],
+      "parameters": {
+        "conditions": {
+          "options": { "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "has-items",
+              "leftValue": "={{ Array.isArray($json) ? $json.length : 0 }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "c0000001-0000-0000-0000-000000000005",
+      "name": "Split Articles",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 300],
+      "parameters": {
+        "jsCode": "const articles = Array.isArray(items[0].json) ? items[0].json : [items[0].json];\nreturn articles.map(a => ({ json: a }));"
+      }
+    },
+    {
+      "id": "c0000001-0000-0000-0000-000000000006",
+      "name": "Rate Limit Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1140, 300],
+      "parameters": { "batchSize": 5, "options": { "reset": false } }
+    },
+    {
+      "id": "c0000001-0000-0000-0000-000000000007",
+      "name": "Build Claude Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, 300],
+      "parameters": {
+        "jsCode": "const art = items[0].json;\nconst title   = art.title   || '';\nconst content = art.content || '';\nconst source  = art.source  || '';\nconst url     = art.url     || '';\nconst pubDate = art.published_at || '';\n\nconst systemPrompt = `You are an expert FMCG (Fast-Moving Consumer Goods) deal intelligence analyst. \nYour task is to extract structured intelligence from news articles.\n\nRules:\n- Extract ONLY information explicitly stated in the article. No hallucination.\n- If deal value is not mentioned, omit it. \n- If geography is unclear, use 'Global' or 'Unknown'.\n- If it's not a deal/transaction article, set deal_type to 'none'.\n- confidence_score reflects how certain you are about the extraction (0.0–1.0).\n- Return ONLY valid JSON — no markdown, no explanation.`;\n\nconst userPrompt = `Analyze this FMCG news article and extract structured intelligence.\n\nSource: ${source}\nURL: ${url}\nPublished: ${pubDate}\nTitle: ${title}\nContent: ${content.substring(0, 3000)}\n\nReturn exactly this JSON structure:\n{\n  \"headline\": \"concise 1-line headline under 100 chars\",\n  \"summary\": \"2-3 sentence factual summary of the key development\",\n  \"category\": \"Deals | Trends | Product Launch | Regulatory | Other\",\n  \"companies\": [\"Company A\", \"Company B\"],\n  \"deal_type\": \"acquisition | merger | partnership | expansion | divestiture | investment | joint_venture | ipo | none\",\n  \"geography\": \"country or region (e.g. India, US, Europe, Global)\",\n  \"deal_value\": \"deal value with currency if mentioned, else null\",\n  \"key_insights\": [\n    \"insight 1 (max 15 words)\",\n    \"insight 2 (max 15 words)\",\n    \"insight 3 (max 15 words)\"\n  ],\n  \"confidence_score\": 0.0\n}`;\n\nreturn [{\n  json: {\n    raw_id: art.id,\n    raw_url: url,\n    raw_source: source,\n    raw_published_at: pubDate,\n    system_prompt: systemPrompt,\n    user_prompt: userPrompt,\n  }\n}];"
+      }
+    },
+    {
+      "id": "c0000001-0000-0000-0000-000000000008",
+      "name": "Call Claude API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1580, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $env.ANTHROPIC_API_KEY }}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1024, system: $json.system_prompt, messages: [{ role: 'user', content: $json.user_prompt }] }) }}",
+        "options": {
+          "timeout": 60000,
+          "response": { "response": { "responseFormat": "json" } }
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "c0000001-0000-0000-0000-000000000009",
+      "name": "Parse Claude Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1800, 300],
+      "parameters": {
+        "jsCode": "const results = [];\n\nfor (const item of items) {\n  const resp    = item.json;\n  const rawId   = item.json.raw_id   || $('Build Claude Prompt').first().json.raw_id;\n  const rawUrl  = item.json.raw_url  || $('Build Claude Prompt').first().json.raw_url;\n  const source  = item.json.raw_source || $('Build Claude Prompt').first().json.raw_source;\n  const pubDate = item.json.raw_published_at || $('Build Claude Prompt').first().json.raw_published_at;\n\n  if (!resp || resp.error) {\n    console.warn('Claude API error:', JSON.stringify(resp?.error));\n    results.push({ json: { _error: true, raw_id: rawId } });\n    continue;\n  }\n\n  const textContent = resp.content?.[0]?.text || '';\n  let parsed;\n  try {\n    // Strip any markdown code fences if present\n    const cleaned = textContent.replace(/^```json?\\s*/m, '').replace(/\\s*```$/m, '').trim();\n    parsed = JSON.parse(cleaned);\n  } catch (e) {\n    console.warn('JSON parse error:', e.message, '| Raw:', textContent.substring(0, 200));\n    results.push({ json: { _error: true, raw_id: rawId } });\n    continue;\n  }\n\n  results.push({\n    json: {\n      raw_id:           rawId,\n      headline:         (parsed.headline   || '').substring(0, 255),\n      summary:          parsed.summary     || null,\n      category:         parsed.category    || 'Other',\n      companies:        JSON.stringify(parsed.companies || []),\n      deal_type:        parsed.deal_type   || 'none',\n      geography:        parsed.geography   || null,\n      deal_value:       parsed.deal_value  || null,\n      key_insights:     JSON.stringify(parsed.key_insights || []),\n      confidence_score: parseFloat(parsed.confidence_score) || 0.5,\n      source,\n      original_url:     rawUrl,\n      article_date:     pubDate,\n      published:        false,\n      _error:           false,\n    }\n  });\n}\n\nreturn results;"
+      }
+    },
+    {
+      "id": "c0000001-0000-0000-0000-000000000010",
+      "name": "Filter Errors",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2020, 300],
+      "parameters": {
+        "conditions": {
+          "options": { "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "no-error",
+              "leftValue": "={{ $json._error }}",
+              "rightValue": false,
+              "operator": { "type": "boolean", "operation": "equal" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "c0000001-0000-0000-0000-000000000011",
+      "name": "Insert news_processed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2240, 240],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/news_processed",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ raw_id: $json.raw_id, headline: $json.headline, summary: $json.summary, category: $json.category, companies: $json.companies, deal_type: $json.deal_type, geography: $json.geography, deal_value: $json.deal_value, key_insights: $json.key_insights, confidence_score: $json.confidence_score, source: $json.source, original_url: $json.original_url, article_date: $json.article_date, published: $json.published }) }}",
+        "options": { "timeout": 15000 }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "c0000001-0000-0000-0000-000000000012",
+      "name": "Mark Raw as Processed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2460, 240],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/news_raw?id=eq.{{ $json.raw_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"is_processed\": true}",
+        "options": { "timeout": 10000 }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "c0000001-0000-0000-0000-000000000013",
+      "name": "Insert Company Mentions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2680, 240],
+      "parameters": {
+        "jsCode": "// Build company_mentions rows from the newly inserted article\nconst processed = items[0].json;\nconst articleId = Array.isArray(processed) ? processed[0]?.id : processed.id;\nif (!articleId) return [];\n\nconst companies = JSON.parse(items[0].json.companies || '[]');\nconst dealType  = items[0].json.deal_type || 'none';\n\n// Infer role: first company = acquirer/investor, rest = targets (heuristic)\nreturn companies.map((name, idx) => ({\n  json: {\n    _article_id: articleId,\n    company_name: name,\n    article_id: articleId,\n    mention_type: idx === 0 ? (dealType === 'acquisition' ? 'acquirer' : 'investor') : 'target',\n  }\n}));"
+      }
+    },
+    {
+      "id": "c0000001-0000-0000-0000-000000000014",
+      "name": "Insert to company_mentions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2900, 240],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/company_mentions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "resolution=ignore-duplicates" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ company_name: $json.company_name, article_id: $json.article_id, mention_type: $json.mention_type }) }}",
+        "options": { "timeout": 10000 }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "c0000001-0000-0000-0000-000000000015",
+      "name": "Wait 2s (Rate Limit)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [2460, 460],
+      "parameters": { "resume": "timeInterval", "unit": "seconds", "amount": 2 }
+    }
+  ],
+  "connections": {
+    "Webhook: Trigger from B": {
+      "main": [[{ "node": "Fetch Pending Extraction", "type": "main", "index": 0 }]]
+    },
+    "Schedule Fallback": {
+      "main": [[{ "node": "Fetch Pending Extraction", "type": "main", "index": 0 }]]
+    },
+    "Fetch Pending Extraction": {
+      "main": [[{ "node": "Any Pending?", "type": "main", "index": 0 }]]
+    },
+    "Any Pending?": {
+      "main": [
+        [{ "node": "Split Articles", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Split Articles": {
+      "main": [[{ "node": "Rate Limit Batches", "type": "main", "index": 0 }]]
+    },
+    "Rate Limit Batches": {
+      "main": [[{ "node": "Build Claude Prompt", "type": "main", "index": 0 }]]
+    },
+    "Build Claude Prompt": {
+      "main": [[{ "node": "Call Claude API", "type": "main", "index": 0 }]]
+    },
+    "Call Claude API": {
+      "main": [[{ "node": "Parse Claude Response", "type": "main", "index": 0 }]]
+    },
+    "Parse Claude Response": {
+      "main": [[{ "node": "Filter Errors", "type": "main", "index": 0 }]]
+    },
+    "Filter Errors": {
+      "main": [
+        [{ "node": "Insert news_processed", "type": "main", "index": 0 }],
+        [{ "node": "Wait 2s (Rate Limit)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Insert news_processed": {
+      "main": [[{ "node": "Mark Raw as Processed", "type": "main", "index": 0 }]]
+    },
+    "Mark Raw as Processed": {
+      "main": [[{ "node": "Insert Company Mentions", "type": "main", "index": 0 }]]
+    },
+    "Insert Company Mentions": {
+      "main": [[{ "node": "Insert to company_mentions", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1", "saveManualExecutions": true },
+  "id": "fmcg-workflow-c",
+  "meta": { "templateCredsSetupCompleted": false },
+  "versionId": "c0000001-0000-0000-0000-000000000000",
+  "tags": [{ "id": "fmcg-tag-1", "name": "FMCG-Intelligence" }]
+}

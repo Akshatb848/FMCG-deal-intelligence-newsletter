@@ -9,18 +9,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 
-from app.routes.upload   import router as upload_router
-from app.routes.jobs     import router as jobs_router
-from app.routes.results  import router as results_router
-from app.routes.pipeline import router as pipeline_router
+from app.routes.upload        import router as upload_router
+from app.routes.jobs          import router as jobs_router
+from app.routes.results       import router as results_router
+from app.routes.pipeline      import router as pipeline_router
+from app.routes.intelligence  import router as intelligence_router
 
 app = FastAPI(
     title="FMCG Deal Intelligence Platform",
     description=(
-        "End-to-end 7-stage AI pipeline: Ingestion → De-duplication → Relevance Filtering "
-        "→ Credibility Scoring → Summarization → Newsletter Generation → Output Formatting."
+        "End-to-end AI pipeline + real-time intelligence layer. "
+        "8-stage batch pipeline (Ingestion → Link Validation → Newsletter) "
+        "plus live n8n/Supabase-backed intelligence API (/api/intel/*)."
     ),
-    version="2.0.0",
+    version="3.0.0",
 )
 
 app.add_middleware(
@@ -36,10 +38,11 @@ async def health():
     return JSONResponse({"status": "ok", "version": "2.0.0"})
 
 # API routes
-app.include_router(upload_router,   prefix="/api", tags=["Upload"])
-app.include_router(jobs_router,     prefix="/api", tags=["Jobs"])
-app.include_router(results_router,  prefix="/api", tags=["Results"])
-app.include_router(pipeline_router, prefix="/api", tags=["Pipeline"])
+app.include_router(upload_router,       prefix="/api", tags=["Upload"])
+app.include_router(jobs_router,         prefix="/api", tags=["Jobs"])
+app.include_router(results_router,      prefix="/api", tags=["Results"])
+app.include_router(pipeline_router,     prefix="/api", tags=["Pipeline"])
+app.include_router(intelligence_router, prefix="/api", tags=["Intelligence"])
 
 # Static frontend
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")

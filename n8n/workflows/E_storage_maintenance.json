@@ -1,0 +1,168 @@
+{
+  "name": "FMCG Intelligence — E: Storage Maintenance",
+  "nodes": [
+    {
+      "id": "e0000001-0000-0000-0000-000000000001",
+      "name": "Daily at Midnight",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 0 * * *" }]
+        }
+      }
+    },
+    {
+      "id": "e0000001-0000-0000-0000-000000000002",
+      "name": "Archive Old Raw Records",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 200],
+      "parameters": {
+        "method": "DELETE",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/news_raw",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "is_relevant", "value": "eq.false" },
+            { "name": "created_at", "value": "lt.{{ new Date(Date.now() - 30*24*60*60*1000).toISOString() }}" }
+          ]
+        },
+        "options": { "timeout": 30000 }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "e0000001-0000-0000-0000-000000000003",
+      "name": "Archive Old Duplicates",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 360],
+      "parameters": {
+        "method": "DELETE",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/news_raw",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "is_duplicate", "value": "eq.true" },
+            { "name": "created_at", "value": "lt.{{ new Date(Date.now() - 7*24*60*60*1000).toISOString() }}" }
+          ]
+        },
+        "options": { "timeout": 30000 }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "e0000001-0000-0000-0000-000000000004",
+      "name": "Get Storage Stats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 520],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/pg_stat_user_tables",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" }
+          ]
+        },
+        "options": { "timeout": 15000 }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "e0000001-0000-0000-0000-000000000005",
+      "name": "Reset Stale Unprocessed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 360],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/news_raw",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "is_relevant", "value": "is.null" },
+            { "name": "created_at", "value": "lt.{{ new Date(Date.now() - 2*60*60*1000).toISOString() }}" },
+            { "name": "select", "value": "id" },
+            { "name": "limit", "value": "50" }
+          ]
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "e0000001-0000-0000-0000-000000000006",
+      "name": "Mark Stale as Irrelevant",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 360],
+      "parameters": {
+        "jsCode": "// Mark any articles stuck in null relevance for >2h as irrelevant (pipeline missed them)\nconst stale = Array.isArray(items[0].json) ? items[0].json : [];\nconsole.log(`Maintenance: ${stale.length} stale unprocessed records found`);\nreturn [{ json: { stale_count: stale.length, ids: stale.map(r => r.id) } }];"
+      }
+    },
+    {
+      "id": "e0000001-0000-0000-0000-000000000007",
+      "name": "Log Maintenance Complete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 360],
+      "parameters": {
+        "jsCode": "console.log('Daily maintenance complete:', new Date().toISOString());\nreturn [{ json: { status: 'maintenance_complete', timestamp: new Date().toISOString() } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Daily at Midnight": {
+      "main": [
+        [
+          { "node": "Archive Old Raw Records", "type": "main", "index": 0 },
+          { "node": "Archive Old Duplicates", "type": "main", "index": 0 },
+          { "node": "Get Storage Stats", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Archive Old Raw Records": {
+      "main": [[{ "node": "Reset Stale Unprocessed", "type": "main", "index": 0 }]]
+    },
+    "Archive Old Duplicates": {
+      "main": [[{ "node": "Reset Stale Unprocessed", "type": "main", "index": 0 }]]
+    },
+    "Reset Stale Unprocessed": {
+      "main": [[{ "node": "Mark Stale as Irrelevant", "type": "main", "index": 0 }]]
+    },
+    "Mark Stale as Irrelevant": {
+      "main": [[{ "node": "Log Maintenance Complete", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "id": "fmcg-workflow-e",
+  "meta": { "templateCredsSetupCompleted": false },
+  "versionId": "e0000001-0000-0000-0000-000000000000",
+  "tags": [{ "id": "fmcg-tag-1", "name": "FMCG-Intelligence" }]
+}

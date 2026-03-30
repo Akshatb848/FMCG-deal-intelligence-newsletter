@@ -36,7 +36,9 @@
     "date-fns": "^3.6.0",
     "react-intersection-observer": "^9.13.0",
     "sonner": "^1.5.0",
-    "next-themes": "^0.3.0"
+    "next-themes": "^0.3.0",
+    "@supabase/supabase-js": "^2.45.0",
+    "@anthropic-ai/sdk": "^0.27.0"
   },
   "devDependencies": {
     "typescript": "^5.5.2",

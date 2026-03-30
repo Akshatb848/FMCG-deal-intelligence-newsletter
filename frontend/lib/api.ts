@@ -189,6 +189,92 @@ export async function checkHealth(): Promise<boolean> {
   }
 }
 
+// ── Intelligence Layer (Supabase-backed) ──────────────────────────────────────
+
+export interface NewsQueryParams {
+  page?:      number;
+  limit?:     number;
+  category?:  string;
+  deal_type?: string;
+  geography?: string;
+  trending?:  boolean;
+  search?:    string;
+  sort?:      'latest' | 'trending' | 'confidence';
+}
+
+export interface IntelNewsResponse {
+  articles: {
+    id: string;
+    title: string;
+    summary: string | null;
+    category: string | null;
+    companies: string[];
+    deal_type: string | null;
+    geography: string | null;
+    deal_value: string | null;
+    key_insights: string[];
+    confidence_score: number | null;
+    trending_flag: boolean;
+    trend_score: number;
+    source: string | null;
+    url: string | null;
+    published_at: string | null;
+    created_at: string;
+  }[];
+  pagination: {
+    page: number; limit: number; total: number;
+    total_pages: number; has_next: boolean; has_prev: boolean;
+  };
+  filters: Record<string, unknown>;
+}
+
+export async function getIntelNews(params: NewsQueryParams = {}): Promise<IntelNewsResponse> {
+  const qs = new URLSearchParams();
+  if (params.page)      qs.set('page',      String(params.page));
+  if (params.limit)     qs.set('limit',     String(params.limit));
+  if (params.category)  qs.set('category',  params.category);
+  if (params.deal_type) qs.set('deal_type', params.deal_type);
+  if (params.geography) qs.set('geography', params.geography);
+  if (params.trending)  qs.set('trending',  'true');
+  if (params.search)    qs.set('search',    params.search);
+  if (params.sort)      qs.set('sort',      params.sort);
+  const path = `/news${qs.toString() ? '?' + qs.toString() : ''}`;
+  return apiFetch<IntelNewsResponse>(path);
+}
+
+export async function getIntelArticle(id: string) {
+  return apiFetch<{ article: IntelNewsResponse['articles'][0]; related: unknown[] }>(`/news/${id}`);
+}
+
+export async function getIntelTrends(windowHours: 24 | 48 | 168 = 24) {
+  return apiFetch<{
+    snapshot: unknown;
+    companies: unknown[];
+    trending_articles: unknown[];
+    deal_type_breakdown: { type: string; count: number }[];
+    window_hours: number;
+  }>(`/trends?window_hours=${windowHours}`);
+}
+
+export async function getIntelligence(company?: string) {
+  const qs = company ? `?company=${encodeURIComponent(company)}` : '';
+  return apiFetch<{
+    companies: unknown[];
+    knowledge_graph: { company: string; connected_to: string[]; degree: number }[];
+  }>(`/intelligence${qs}`);
+}
+
+export async function generateNewsletter(opts?: { force_regenerate?: boolean }) {
+  return apiFetch<{ newsletter: unknown; cached?: boolean; article_count?: number }>(
+    '/newsletter/generate',
+    { method: 'POST', body: JSON.stringify(opts ?? {}) },
+  );
+}
+
+export async function getLatestNewsletter() {
+  return apiFetch<{ newsletter: unknown }>('/newsletter/generate');
+}
+
 // ── AI Assistant ──────────────────────────────────────────────────────────────
 
 export async function sendAIMessage(

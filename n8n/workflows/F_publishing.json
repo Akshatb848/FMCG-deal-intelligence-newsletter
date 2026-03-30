@@ -1,0 +1,215 @@
+{
+  "name": "FMCG Intelligence — F: Publishing",
+  "nodes": [
+    {
+      "id": "f0000001-0000-0000-0000-000000000001",
+      "name": "Daily at 8 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 8 * * *" }]
+        }
+      }
+    },
+    {
+      "id": "f0000001-0000-0000-0000-000000000002",
+      "name": "Fetch Unpublished Articles",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/news_processed",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "published", "value": "eq.false" },
+            { "name": "confidence_score", "value": "gte.0.5" },
+            { "name": "created_at", "value": "gte.{{ new Date(Date.now() - 24*60*60*1000).toISOString() }}" },
+            { "name": "select", "value": "id,headline,summary,category,companies,deal_type,geography,deal_value,key_insights,confidence_score,trending_flag,trend_score,source,original_url,article_date" },
+            { "name": "order", "value": "trending_flag.desc,trend_score.desc,confidence_score.desc" },
+            { "name": "limit", "value": "50" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "f0000001-0000-0000-0000-000000000003",
+      "name": "Any Unpublished?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "parameters": {
+        "conditions": {
+          "options": { "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "has-articles",
+              "leftValue": "={{ Array.isArray($json) ? $json.length : 0 }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "f0000001-0000-0000-0000-000000000004",
+      "name": "Sort by Priority",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 240],
+      "parameters": {
+        "jsCode": "// Priority ordering: Deals first → Trends → Product Launch → Regulatory → Other\n// Within each category: trending first, then by confidence_score\nconst PRIORITY = { 'Deals': 1, 'Trends': 2, 'Product Launch': 3, 'Regulatory': 4, 'Other': 5 };\n\nconst articles = Array.isArray(items[0].json) ? items[0].json : [items[0].json];\n\nconst sorted = [...articles].sort((a, b) => {\n  const pa = PRIORITY[a.category] || 5;\n  const pb = PRIORITY[b.category] || 5;\n  if (pa !== pb) return pa - pb;\n  if (a.trending_flag !== b.trending_flag) return b.trending_flag - a.trending_flag;\n  return (b.confidence_score || 0) - (a.confidence_score || 0);\n});\n\nconsole.log(`Publishing ${sorted.length} articles`);\nreturn sorted.map(a => ({ json: a }));"
+      }
+    },
+    {
+      "id": "f0000001-0000-0000-0000-000000000005",
+      "name": "Mark as Published",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 240],
+      "parameters": {
+        "jsCode": "// Collect all article IDs for bulk publish update\nconst ids = items.map(i => i.json.id).filter(Boolean);\nconst articles = items.map(i => i.json);\nconst now = new Date().toISOString();\n\nreturn [{ json: { ids, articles, published_at: now } }];"
+      }
+    },
+    {
+      "id": "f0000001-0000-0000-0000-000000000006",
+      "name": "Bulk Publish Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 240],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/news_processed",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "id", "value": "=in.({{ $json.ids.join(',') }})" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ published: true, published_at: $json.published_at }) }}",
+        "options": { "timeout": 30000 }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "f0000001-0000-0000-0000-000000000007",
+      "name": "Generate Newsletter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 240],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $env.ANTHROPIC_API_KEY }}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: 'claude-sonnet-4-6',\n  max_tokens: 2048,\n  messages: [{\n    role: 'user',\n    content: `You are writing the FMCG Deal Intelligence Daily Brief — a professional newsletter read by M&A analysts, brand strategists, and PE investors.\\n\\nWrite today's edition using ONLY the articles provided below. Include:\\n1. A bold 2-sentence executive summary of the day's most significant developments\\n2. Top 3 Deal Highlights (headline + 2-sentence analysis + why it matters)\\n3. Trend Watch: 1 paragraph on any patterns emerging across deals\\n4. Notable company moves: bullet points for remaining significant stories\\n\\nTone: authoritative, concise, data-backed. No marketing language. No filler. Every sentence must add value.\\n\\nArticles:\\n${JSON.stringify($('Sort by Priority').all().slice(0,15).map(i => i.json).map(a => ({ headline: a.headline, summary: a.summary, category: a.category, deal_type: a.deal_type, companies: a.companies, deal_value: a.deal_value, geography: a.geography, key_insights: a.key_insights })), null, 2)}`\n  }]\n}) }}",
+        "options": { "timeout": 60000 }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
+    },
+    {
+      "id": "f0000001-0000-0000-0000-000000000008",
+      "name": "Build Newsletter Record",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 240],
+      "parameters": {
+        "jsCode": "const nlResp = items[0].json;\nconst publishData = $('Mark as Published').first().json;\nconst articles = publishData.articles || [];\n\nconst nlText = nlResp?.content?.[0]?.text || 'Newsletter generation failed.';\nconst today = new Date();\nconst dateStr = today.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });\n\nconst stats = {\n  total_articles: articles.length,\n  deals: articles.filter(a => a.category === 'Deals').length,\n  trends: articles.filter(a => a.category === 'Trends').length,\n  trending: articles.filter(a => a.trending_flag).length,\n};\n\nconst highlights = articles\n  .filter(a => a.category === 'Deals' || a.trending_flag)\n  .slice(0, 3)\n  .map(a => ({\n    headline: a.headline,\n    summary: a.summary,\n    companies: a.companies,\n    deal_type: a.deal_type,\n    url: a.original_url,\n  }));\n\nreturn [{\n  json: {\n    title: `FMCG Deal Intelligence — ${dateStr}`,\n    date_range: dateStr,\n    edition: 'Daily',\n    content_text: nlText,\n    article_ids: JSON.stringify(publishData.ids || []),\n    highlights: JSON.stringify(highlights),\n    stats: JSON.stringify(stats),\n  }\n}];"
+      }
+    },
+    {
+      "id": "f0000001-0000-0000-0000-000000000009",
+      "name": "Save Newsletter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 240],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/newsletters",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": { "timeout": 15000 }
+      },
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Daily at 8 AM": {
+      "main": [[{ "node": "Fetch Unpublished Articles", "type": "main", "index": 0 }]]
+    },
+    "Fetch Unpublished Articles": {
+      "main": [[{ "node": "Any Unpublished?", "type": "main", "index": 0 }]]
+    },
+    "Any Unpublished?": {
+      "main": [
+        [{ "node": "Sort by Priority", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Sort by Priority": {
+      "main": [[{ "node": "Mark as Published", "type": "main", "index": 0 }]]
+    },
+    "Mark as Published": {
+      "main": [[{ "node": "Bulk Publish Update", "type": "main", "index": 0 }]]
+    },
+    "Bulk Publish Update": {
+      "main": [[{ "node": "Generate Newsletter", "type": "main", "index": 0 }]]
+    },
+    "Generate Newsletter": {
+      "main": [[{ "node": "Build Newsletter Record", "type": "main", "index": 0 }]]
+    },
+    "Build Newsletter Record": {
+      "main": [[{ "node": "Save Newsletter", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1", "saveManualExecutions": true },
+  "id": "fmcg-workflow-f",
+  "meta": { "templateCredsSetupCompleted": false },
+  "versionId": "f0000001-0000-0000-0000-000000000000",
+  "tags": [{ "id": "fmcg-tag-1", "name": "FMCG-Intelligence" }]
+}

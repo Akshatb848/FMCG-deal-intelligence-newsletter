@@ -1,0 +1,225 @@
+{
+  "name": "FMCG Intelligence — A: News Ingestion",
+  "nodes": [
+    {
+      "id": "a1b2c3d4-0001-0001-0001-000000000001",
+      "name": "Every 6 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "hours", "hoursInterval": 6 }]
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-0001-0001-000000000002",
+      "name": "Log Run Start",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": { "supabaseApi": { "id": "SUPABASE_CRED_ID", "name": "Supabase FMCG" } },
+      "parameters": {
+        "operation": "create",
+        "tableId": "pipeline_runs",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "workflow_name", "fieldValue": "A_news_ingestion" },
+            { "fieldId": "status", "fieldValue": "running" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-0001-0001-000000000003",
+      "name": "Define RSS Feeds",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "parameters": {
+        "jsCode": "// Define all RSS feed URLs for FMCG deal intelligence\nconst feeds = [\n  // Global FMCG M&A\n  'https://news.google.com/rss/search?q=FMCG+acquisition+deal&hl=en-US&gl=US&ceid=US:en',\n  'https://news.google.com/rss/search?q=consumer+goods+merger+acquisition&hl=en-US&gl=US&ceid=US:en',\n  'https://news.google.com/rss/search?q=food+beverage+acquisition+billion&hl=en-US&gl=US&ceid=US:en',\n  'https://news.google.com/rss/search?q=FMCG+private+equity+investment&hl=en-US&gl=US&ceid=US:en',\n  // Key global brands\n  'https://news.google.com/rss/search?q=Unilever+acquisition+deal+2026&hl=en-US&gl=US&ceid=US:en',\n  'https://news.google.com/rss/search?q=Nestle+merger+acquisition+deal&hl=en-US&gl=US&ceid=US:en',\n  'https://news.google.com/rss/search?q=PepsiCo+acquisition+deal&hl=en-US&gl=US&ceid=US:en',\n  'https://news.google.com/rss/search?q=Coca-Cola+acquisition+investment&hl=en-US&gl=US&ceid=US:en',\n  'https://news.google.com/rss/search?q=Procter+Gamble+acquisition&hl=en-US&gl=US&ceid=US:en',\n  'https://news.google.com/rss/search?q=Mars+Mondelez+Kraft+acquisition&hl=en-US&gl=US&ceid=US:en',\n  // India FMCG\n  'https://news.google.com/rss/search?q=India+FMCG+acquisition+deal&hl=en-IN&gl=IN&ceid=IN:en',\n  'https://news.google.com/rss/search?q=HUL+Dabur+Marico+ITC+acquisition&hl=en-IN&gl=IN&ceid=IN:en',\n  'https://news.google.com/rss/search?q=Tata+Consumer+acquisition+India&hl=en-IN&gl=IN&ceid=IN:en',\n  // Deal types\n  'https://news.google.com/rss/search?q=FMCG+divestiture+spin-off+brand+sale&hl=en-US&gl=US&ceid=US:en',\n  'https://news.google.com/rss/search?q=CPG+brand+acquisition+joint+venture&hl=en-US&gl=US&ceid=US:en',\n];\n\nreturn feeds.map(url => ({ json: { feed_url: url } }));"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-0001-0001-000000000004",
+      "name": "Split Feeds",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [900, 300],
+      "parameters": { "batchSize": 1, "options": {} }
+    },
+    {
+      "id": "a1b2c3d4-0001-0001-0001-000000000005",
+      "name": "Fetch RSS Feed",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [1120, 300],
+      "parameters": {
+        "url": "={{ $json.feed_url }}"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-0001-0001-000000000006",
+      "name": "Normalize RSS Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300],
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\n\nreturn items.map(item => {\n  const d = item.json;\n  const url = (d.link || d.url || '').trim();\n  const title = (d.title || '').replace(/<[^>]*>/g, '').trim();\n  const source = d.creator || d.author || extractDomain(url);\n  const publishedAt = d.pubDate || d.isoDate || d.date || new Date().toISOString();\n  const content = (d.contentSnippet || d.content || d.summary || '').replace(/<[^>]*>/g, '').substring(0, 2000);\n\n  // Hash URL for dedup — stable identifier\n  const contentHash = crypto.createHash('md5').update(url).digest('hex');\n\n  return {\n    json: {\n      title,\n      url,\n      content,\n      source,\n      published_at: new Date(publishedAt).toISOString(),\n      content_hash: contentHash,\n      ingestion_source: 'rss',\n      raw_feed_url: item.json.feedUrl || null,\n    }\n  };\n}).filter(item => item.json.url && item.json.title);\n\nfunction extractDomain(url) {\n  try { return new URL(url).hostname.replace('www.', ''); } catch { return 'unknown'; }\n}"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-0001-0001-000000000007",
+      "name": "Fetch NewsAPI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 500],
+      "parameters": {
+        "method": "GET",
+        "url": "https://newsapi.org/v2/everything",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "q", "value": "FMCG acquisition merger divestiture deal" },
+            { "name": "sortBy", "value": "publishedAt" },
+            { "name": "pageSize", "value": "50" },
+            { "name": "language", "value": "en" },
+            { "name": "apiKey", "value": "={{ $env.NEWS_API_KEY }}" }
+          ]
+        },
+        "options": {
+          "timeout": 15000,
+          "response": { "response": { "responseFormat": "json" } }
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "a1b2c3d4-0001-0001-0001-000000000008",
+      "name": "Normalize NewsAPI Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 500],
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\n\nconst response = items[0].json;\nconst articles = response.articles || [];\n\nif (!articles.length) return [];\n\nreturn articles.map(a => {\n  const url = (a.url || '').trim();\n  const contentHash = crypto.createHash('md5').update(url).digest('hex');\n  return {\n    json: {\n      title: (a.title || '').trim(),\n      url,\n      content: (a.description || a.content || '').substring(0, 2000),\n      source: a.source?.name || extractDomain(url),\n      published_at: a.publishedAt || new Date().toISOString(),\n      content_hash: contentHash,\n      ingestion_source: 'newsapi',\n      raw_feed_url: null,\n    }\n  };\n}).filter(item => item.json.url && item.json.title);\n\nfunction extractDomain(url) {\n  try { return new URL(url).hostname.replace('www.', ''); } catch { return 'unknown'; }\n}"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-0001-0001-000000000009",
+      "name": "Merge All Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1560, 400],
+      "parameters": { "mode": "append" }
+    },
+    {
+      "id": "a1b2c3d4-0001-0001-0001-000000000010",
+      "name": "Deduplicate in Memory",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 400],
+      "parameters": {
+        "jsCode": "// Remove exact URL duplicates within this batch before DB write\nconst seen = new Set();\nconst unique = [];\n\nfor (const item of items) {\n  const hash = item.json.content_hash;\n  if (hash && !seen.has(hash)) {\n    seen.add(hash);\n    unique.push(item);\n  }\n}\n\nconsole.log(`Ingested: ${items.length} → Unique: ${unique.length}`);\nreturn unique;"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0001-0001-0001-000000000011",
+      "name": "Batch for DB",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [2000, 400],
+      "parameters": { "batchSize": 20, "options": {} }
+    },
+    {
+      "id": "a1b2c3d4-0001-0001-0001-000000000012",
+      "name": "Upsert to news_raw",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2220, 400],
+      "credentials": {},
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/news_raw",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "resolution=ignore-duplicates" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {},
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {
+          "timeout": 30000,
+          "batching": { "batch": { "batchSize": 20, "batchInterval": 200 } }
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "a1b2c3d4-0001-0001-0001-000000000013",
+      "name": "Log Run Complete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 400],
+      "parameters": {
+        "jsCode": "// Log completion — update pipeline_runs via Supabase REST API\nconst total = items.length;\nconsole.log(`Workflow A complete. Records inserted/attempted: ${total}`);\nreturn [{ json: { status: 'success', records_ingested: total, timestamp: new Date().toISOString() } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Every 6 Hours": {
+      "main": [[{ "node": "Log Run Start", "type": "main", "index": 0 }]]
+    },
+    "Log Run Start": {
+      "main": [[{ "node": "Define RSS Feeds", "type": "main", "index": 0 }]]
+    },
+    "Define RSS Feeds": {
+      "main": [[{ "node": "Split Feeds", "type": "main", "index": 0 }]]
+    },
+    "Split Feeds": {
+      "main": [[{ "node": "Fetch RSS Feed", "type": "main", "index": 0 }]]
+    },
+    "Fetch RSS Feed": {
+      "main": [[{ "node": "Normalize RSS Items", "type": "main", "index": 0 }]]
+    },
+    "Normalize RSS Items": {
+      "main": [[{ "node": "Merge All Sources", "type": "main", "index": 0 }]]
+    },
+    "Fetch NewsAPI": {
+      "main": [[{ "node": "Normalize NewsAPI Items", "type": "main", "index": 0 }]]
+    },
+    "Normalize NewsAPI Items": {
+      "main": [[{ "node": "Merge All Sources", "type": "main", "index": 1 }]]
+    },
+    "Define RSS Feeds": {
+      "main": [[
+        { "node": "Split Feeds", "type": "main", "index": 0 },
+        { "node": "Fetch NewsAPI", "type": "main", "index": 0 }
+      ]]
+    },
+    "Merge All Sources": {
+      "main": [[{ "node": "Deduplicate in Memory", "type": "main", "index": 0 }]]
+    },
+    "Deduplicate in Memory": {
+      "main": [[{ "node": "Batch for DB", "type": "main", "index": 0 }]]
+    },
+    "Batch for DB": {
+      "main": [[{ "node": "Upsert to news_raw", "type": "main", "index": 0 }]]
+    },
+    "Upsert to news_raw": {
+      "main": [[{ "node": "Log Run Complete", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1", "saveManualExecutions": true, "callerPolicy": "workflowsFromSameOwner" },
+  "id": "fmcg-workflow-a",
+  "meta": { "templateCredsSetupCompleted": false },
+  "versionId": "a1000000-0000-0000-0000-000000000001",
+  "tags": [{ "id": "fmcg-tag-1", "name": "FMCG-Intelligence" }]
+}
