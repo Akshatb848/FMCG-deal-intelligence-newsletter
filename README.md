@@ -1,222 +1,181 @@
-# FMCG Deal Intelligence Newsletter Pipeline
+# FMCG Deal Intelligence Newsletter
 
-An end-to-end agent-style pipeline that ingests deal-related news, removes duplicates, scores relevance and source credibility, and outputs a formatted newsletter covering M&A, investments, and divestitures in the FMCG sector.
+**Turns a noisy feed of deal news into a ranked, de-duplicated, source-checked FMCG M&A newsletter — exported as JSON, CSV, Excel and Word.**
+
+[![CI](https://github.com/Akshatb848/FMCG-deal-intelligence-newsletter/actions/workflows/ci.yml/badge.svg)](https://github.com/Akshatb848/FMCG-deal-intelligence-newsletter/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)
+![FastAPI](https://img.shields.io/badge/API-FastAPI-009688.svg)
+![Next.js 14](https://img.shields.io/badge/frontend-Next.js%2014-black.svg)
+
+![Results dashboard after running the pipeline on the bundled 38-article sample](docs/screenshots/dashboard.png)
+
+<sub>Screenshot of the built-in web UI (`static/`) after uploading `data/raw_articles.csv` and running the FMCG preset — captured headlessly with Playwright from a local run. 38 input articles → 30 after de-duplication → 20 in the final newsletter.</sub>
 
 ---
 
-## Quick Start
+## What it does
+
+An 8-stage, deterministic Python pipeline (no LLM, no paid APIs) that takes a CSV/JSON of news articles and:
+
+1. **Ingests** and normalises records (configurable column mapping, ISO dates).
+2. **De-duplicates** — exact title-hash dedup + near-duplicate detection with TF-IDF (bigrams) cosine similarity (threshold 0.20), keeping the version from the most credible source.
+3. **Scores relevance** — keyword scoring for sector terms (0–40) and deal vocabulary (0–40), a recency bonus (0–10), and detects the deal type (Acquisition, Investment, Divestiture, Merger, …).
+4. **Checks credibility** — 3-tier source whitelist (Reuters/Bloomberg/FT/WSJ → tier 1, etc.) and a hard blocklist for rumour sites.
+5. **Validates links** — URL format, placeholder/blocked domains, and a concurrent HTTP status check.
+6. **Summarises** — extractive (sentence scoring), plus regex extraction of the deal value and keyword-based company tagging.
+7. **Generates the newsletter** — top-3 highlights, all deals grouped by type, template-based trend insights.
+8. **Exports** — `processed_articles.json`, `processed_articles.csv`, a 4-sheet Excel report (newsletter, deal summary + bar chart, all articles, pipeline log) and a Word newsletter.
+
+Everything is driven by a `PipelineConfig` dataclass, so the same pipeline can be pointed at another domain (the web UI ships an FMCG preset and a Tech M&A preset).
+
+## Key features
+
+- **CLI** for batch runs and **FastAPI** backend with async jobs, Server-Sent-Events progress streaming, upload and download endpoints (`/docs` for OpenAPI).
+- **Two front ends:** a zero-build wizard UI served by FastAPI (`static/`), and a Next.js 14 dashboard (`frontend/`) that proxies `/api/*` to the backend.
+- **Explainable scoring:** every article carries its sub-scores, credibility tier/flag, dedup method and link-check note.
+- **Synthetic data generator:** `data/generate_fmcg_dataset.py` (seeded, `random.seed(42)`) produces a 563-row dataset with planted exact duplicates, near-duplicates, off-topic noise and broken URLs.
+
+<details>
+<summary>Next.js dashboard (frontend/) connected to the local backend</summary>
+
+![Next.js dashboard](docs/screenshots/nextjs-dashboard.png)
+
+<sub>Captured from `next start` with the FastAPI backend running locally after `POST /api/run-pipeline` on the 563-row synthetic dataset (43 deals in the final output). Labels such as "AI Engine" are UI copy — the underlying logic is rule-based, and the chat assistant in this UI answers from templates in `frontend/lib/api.ts`, not an LLM.</sub>
+</details>
+
+## Architecture
+
+```mermaid
+flowchart LR
+    A[CSV / JSON upload<br/>or bundled dataset] --> B[1 Ingestion]
+    B --> C[2 De-dup<br/>title hash + TF-IDF cosine]
+    C --> D[3 Relevance<br/>keyword + recency scoring]
+    D --> E[4 Credibility<br/>3-tier whitelist + blocklist]
+    E --> F[5 Link validation<br/>format + HTTP status]
+    F --> G[6 Extractive summary]
+    G --> H[7 Newsletter text]
+    H --> I[8 Outputs<br/>JSON · CSV · XLSX · DOCX]
+
+    subgraph Interfaces
+      CLI[main.py CLI]
+      API[FastAPI app/<br/>jobs · SSE · downloads]
+      UI1[static/ wizard UI]
+      UI2[Next.js frontend/]
+    end
+    CLI --> B
+    API --> B
+    UI1 --> API
+    UI2 -->|/api/* rewrite| API
+```
+
+| Layer | Location |
+|-------|----------|
+| Pipeline stages | `pipeline/` (`ingestion`, `dedup`, `relevance`, `credibility`, `link_validator`, `summarization`, `newsletter_text`, `newsletter`, `runner`, `config`) |
+| Web API | `app/server.py`, `app/routes/` (upload, jobs + SSE stream, results, pipeline) |
+| In-memory job store | `app/job_store.py` |
+| Wizard UI | `static/` (vanilla JS + Chart.js) |
+| Dashboard UI | `frontend/` (Next.js 14, TypeScript, Tailwind, React Query, Zustand, Recharts) |
+
+## Tech stack
+
+Python 3.11 · FastAPI · Uvicorn · scikit-learn (TF-IDF, cosine similarity) · pandas · openpyxl · python-docx · requests · Next.js 14 / React 18 / TypeScript / Tailwind CSS · pytest · GitHub Actions
+
+## Quick start
 
 ```bash
+git clone https://github.com/Akshatb848/FMCG-deal-intelligence-newsletter.git
+cd FMCG-deal-intelligence-newsletter
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python main.py                          # uses bundled sample dataset
-python main.py --data path/to/file.csv  # custom CSV input
-python main.py --output my_output/      # custom output directory
+
+# CLI: run the pipeline on the 38-article sample
+python main.py --data data/raw_articles.csv --output output/
+
+# Web app (API + wizard UI) on http://localhost:8000  (API docs at /docs)
+python main.py            # or: python main.py serve --port 8000
 ```
 
-**Outputs** are written to `output/`:
-| File | Description |
-|------|-------------|
-| `processed_articles.json` | Full scored dataset (JSON) |
-| `processed_articles.csv`  | Full scored dataset (CSV) |
-| `FMCG_Deal_Newsletter.xlsx` | 4-sheet Excel newsletter workbook |
+Next.js dashboard (optional, needs the backend running on port 8000):
 
----
-
-## Pipeline Architecture
-
-```
-Raw CSV / News Feed
-       │
-       ▼
-┌─────────────────────────────────┐
-│  Stage 1 – Ingestion            │  pipeline/ingestion.py
-│  Load & normalise articles      │
-│  (field validation, date parse) │
-└────────────────┬────────────────┘
-                 │
-                 ▼
-┌─────────────────────────────────┐
-│  Stage 2 – De-duplication       │  pipeline/dedup.py
-│  A) Exact dedup via title hash  │
-│  B) Near-dedup: TF-IDF cosine   │
-│     similarity ≥ 0.20           │
-└────────────────┬────────────────┘
-                 │
-                 ▼
-┌─────────────────────────────────┐
-│  Stage 3 – Relevance Scoring    │  pipeline/relevance.py
-│  FMCG keyword score   (0–40)    │
-│  Deal keyword score   (0–40)    │
-│  Recency bonus        (0–10)    │
-│  Threshold: ≥ 8 (FMCG+Deal)    │
-└────────────────┬────────────────┘
-                 │
-                 ▼
-┌─────────────────────────────────┐
-│  Stage 4 – Credibility Check    │  pipeline/credibility.py
-│  3-tier source whitelist        │
-│  Hard-block known rumour sites  │
-│  Score 0–10 per article         │
-└────────────────┬────────────────┘
-                 │
-                 ▼
-┌─────────────────────────────────┐
-│  Stage 5 – Newsletter Generator │  pipeline/newsletter.py
-│  JSON + CSV output              │
-│  Excel: 4-sheet workbook        │
-└─────────────────────────────────┘
+```bash
+cd frontend
+npm ci
+npm run dev               # http://localhost:3000
 ```
 
----
+Regenerate the synthetic dataset: `python data/generate_fmcg_dataset.py`.
 
-## Stage Details & Design Decisions
+Deployment config is included for Railway (`railway.toml`, `Procfile`) and Vercel (`frontend/vercel.json`). There is no Dockerfile.
 
-### Stage 1 – Ingestion
+### Environment variables
 
-Loads articles from CSV or JSON. In production this would call live APIs
-(NewsAPI, Bloomberg Terminal, Reuters Connect, RSS feeds). The bundled
-`data/raw_articles.csv` provides a realistic simulated dataset of 38 articles
-including intentional duplicates, near-duplicates, and off-topic entries for
-demonstrating the pipeline.
+No secrets are needed. See [`.env.example`](.env.example):
 
-Each record is normalised: field names lowercased, dates parsed to ISO-8601,
-and a `full_text` field (title + summary) created for downstream NLP.
+| Variable | Used by | Default |
+|----------|---------|---------|
+| `PORT` | `main.py` (FastAPI server) | `8000` |
+| `NEXT_PUBLIC_API_URL` | `frontend/next.config.js` (backend for `/api/*` rewrites) | `http://localhost:8000` |
 
----
+## Sample run (bundled 38-article dataset)
 
-### Stage 2 – De-duplication
-
-**Exact dedup** hashes the canonical title (lowercased, punctuation removed).
-Identical hashes collapse to the highest-credibility source version.
-
-**Near-dedup** builds a TF-IDF matrix (bigrams, sublinear TF, max 5,000
-features) over `full_text` and computes pairwise cosine similarity.
-
-**Threshold = 0.20.** Calibration finding: FMCG deal articles about the *same
-story* from different news wires typically score 0.20–0.53 due to vocabulary
-variation (e.g. "buys" vs. "acquires" vs. "purchases"). Genuinely different
-deals score < 0.15. The 0.20 cut-off cleanly separates same-story clusters
-from distinct deals without false positives.
-
-Duplicate clusters are resolved by keeping the article from the
-highest-credibility source tier.
-
-**Result on sample data:** 38 → 30 articles (8 near-duplicates removed).
-Examples collapsed:
-- Coca-Cola / BodyArmor (3 articles → 1, FT version kept)
-- Nestlé / NotCo (2 articles → 1, Bloomberg kept)
-- KKR / Haldiram's (2 articles → 1, Economic Times kept)
-
----
-
-### Stage 3 – Relevance Scoring
-
-Each article receives three sub-scores:
-
-| Sub-score | Range | Signal |
-|-----------|-------|--------|
-| FMCG sector match | 0–40 | Hits against a curated list of FMCG company names and sector nouns (food, beverage, skincare, household…) |
-| Deal activity match | 0–40 | Hits against M&A / investment / divestiture vocabulary |
-| Recency bonus | 0–10 | ≤7 days old → 10 pts; ≤14 days → 5 pts; older → 0 |
-
-**Filter threshold = 8** (combined FMCG + deal score). Articles below this
-are dropped as off-topic. Correctly removed in the sample:
-
-| Article | Why dropped |
-|---------|-------------|
-| Dollar General earnings | No deal activity |
-| Brazil interest rates | Macro, no FMCG/deal signal |
-| Amazon Go store expansion | Retail tech, no deal signal |
-| UK CMA Sainsbury-Asda block | Regulatory, not a deal itself |
-| Smartphone shipments | Tech sector |
-
----
-
-### Stage 4 – Credibility Check
-
-A three-tier source whitelist assigns a credibility score (0–10):
-
-| Tier | Score | Examples |
-|------|-------|---------|
-| 1 | 9 | Reuters, Bloomberg, Financial Times, WSJ |
-| 2 | 7 | CNBC, BBC, Forbes, Economic Times, Mint |
-| 3 | 5 | PE Hub, VCCircle, Drinks Business, TechCrunch |
-| Unknown | 3 | Sources not in the whitelist (flagged for review) |
-| Blocked | 0 | Known rumour / spam sites (hard-filtered) |
-
-**Assumption:** Credibility reflects *outlet reputation*, not individual
-article accuracy. A Tier-1 source can still publish unverified information;
-human editorial review remains necessary for high-stakes decisions.
-
-**Sample result:** 1 article hard-blocked (DealRumors.net / fabricated
-Mars-Marriott rumour).
-
----
-
-### Stage 5 – Newsletter Generation
-
-The Excel workbook contains four sheets:
-
-| Sheet | Contents |
-|-------|----------|
-| **Newsletter** | Formatted newsletter draft with KPI banner, editorial note, and deal articles grouped by type |
-| **Deal Summary** | Pivot table of deals by type + bar chart |
-| **All Articles** | Full scored dataset for analyst reference |
-| **Pipeline Log** | Stage-by-stage record counts and methodology notes |
-
----
-
-## Output Fields (JSON / CSV)
-
-| Field | Description |
-|-------|-------------|
-| `id` | Article identifier |
-| `title` | Article headline |
-| `source` | Publication name |
-| `published_date` | ISO-8601 date |
-| `url` | Source URL |
-| `full_text` | Title + summary (used for NLP) |
-| `deal_type_detected` | Acquisition / Investment / Divestiture / Merger / Other |
-| `score_fmcg` | FMCG keyword score (0–40) |
-| `score_deal` | Deal keyword score (0–40) |
-| `score_recency` | Recency bonus (0–10) |
-| `credibility_score` | Source credibility score (0–10) |
-| `source_tier` | 1 / 2 / 3 / 0=unknown / None=blocked |
-| `credibility_flag` | Human-readable credibility note |
-| `relevance_score` | Composite score (0–100) |
-
----
-
-## Sample Run Results
+Reproduced by `tests/test_pipeline.py` with HTTP link checks disabled:
 
 ```
-38 raw articles ingested
- → 30 after de-duplication  (8 near-duplicates removed)
- → 25 after relevance filter (5 off-topic removed)
- → 24 after credibility check (1 hard-blocked)
-
-Deal breakdown: 15 Acquisitions · 4 Divestitures · 2 Investments
-                1 Stake Acquisition · 1 Merger · 1 Market Trend
+[Ingestion]     Loaded 38 records
+[De-dup]        38 → 30   (8 near-duplicate removals)
+[Relevance]     30 → 24   (6 below relevance threshold of 8.0)
+[Credibility]   24 → 23   (1 hard-blocked from unreliable sources)
+[LinkValidator] 23 → 20   (3 URLs not reachable / not whitelisted)
+Final: 20 records → JSON, CSV, XLSX, DOCX
+Category breakdown: 13 Acquisition · 4 Divestiture · 1 Investment · 1 Merger · 1 Other
 ```
 
----
+On the 563-row synthetic dataset (`data/fmcg_deals_500.csv`): 563 → 57 after de-dup (155 exact + 351 near) → 43 after relevance → 43 final.
 
-## Extending the Pipeline
+## Testing
 
-| Extension | Where to change |
-|-----------|----------------|
-| Live news API | `pipeline/ingestion.py` → add API client |
-| Semantic near-dedup (sentence embeddings) | `pipeline/dedup.py` → swap TF-IDF for `sentence-transformers` |
-| ML-based relevance classifier | `pipeline/relevance.py` → replace keyword scorer |
-| Additional output formats (Word / PPT) | `pipeline/newsletter.py` → add `python-docx` / `python-pptx` export |
-| Email delivery | `main.py` → add SMTP send after `newsletter.generate()` |
+```bash
+pip install -r requirements-dev.txt
+pytest -q
+```
 
----
+The suite (`tests/`) covers ingestion, exact de-duplication, URL validation rules, an end-to-end run on the sample data asserting the stage-by-stage funnel and all four output files, and API smoke tests (health, index page, download validation). Tests run offline: HTTP link checks are disabled and the raw-data side file is redirected to a temp dir.
 
-## Transparent Assumptions
+CI (`.github/workflows/ci.yml`) runs on every push/PR: ruff (syntax/undefined-name checks), pytest, a CLI smoke run, and a Next.js type-check + production build.
 
-1. **No live data** – sample dataset simulates a real-world news feed.
-2. **Keyword scoring only** – rule-based, interpretable, no model dependency.
-3. **Source credibility ≠ article accuracy** – outlet tier is a proxy only.
-4. **Cosine similarity threshold** is calibrated on the sample data; a larger corpus may need re-tuning.
-5. **Deal values** are as reported by sources; no FX normalisation applied.
+## Project structure
+
+```
+├── main.py                 # CLI + server entry point
+├── pipeline/               # the 8 pipeline stages + PipelineConfig
+├── app/                    # FastAPI app, routes, in-memory job store
+├── static/                 # wizard UI served by FastAPI
+├── frontend/               # Next.js 14 dashboard
+├── data/                   # sample + synthetic datasets, dataset generator
+├── output/                 # example outputs from a previous run (JSON/CSV/XLSX/DOCX)
+├── tests/                  # pytest suite
+└── docs/screenshots/       # README images
+```
+
+## Limitations & roadmap
+
+Candidly:
+
+- **Synthetic / sample data only.** `data/raw_articles.csv` is a hand-made sample and `data/fmcg_deals_500.csv` is generated by a seeded script; there is no live news ingestion yet (NewsAPI/RSS would plug into `pipeline/ingestion.py`).
+- **Rule-based, no LLM or trained model.** Relevance is keyword scoring, summaries are extractive, insights are template sentences. Interpretable, but it will miss deals phrased with vocabulary outside the keyword lists.
+- **TF-IDF threshold (0.20) is calibrated on the sample data** and may need re-tuning on a larger real corpus; embeddings would generalise better.
+- **Link validation hits the network**, so the final count can vary with connectivity; trusted domains are kept as "unverified" when the network is unavailable.
+- **Credibility = outlet reputation**, not article accuracy.
+- **Job store is in-memory** — jobs are lost on restart (only the latest results are persisted to `data/latest_results.json`). No auth on the API.
+- `frontend/` pins `next@14.2.5`, which npm flags with a security advisory; upgrading to a patched 14.2.x is recommended.
+
+Roadmap ideas: live news connectors, sentence-embedding dedup, ML relevance classifier, persistent job store, email delivery.
+
+## License
+
+[MIT](LICENSE) © 2026 Akshat Banga
+
+## Author
+
+**Akshat Banga** — [github.com/Akshatb848](https://github.com/Akshatb848)
