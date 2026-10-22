@@ -8,3 +8,11 @@ venv/
 dist/
 build/
 .DS_Store
+.env.*
+!.env.example
+.pytest_cache/
+.ruff_cache/
+node_modules/
+.next/
+# Written at runtime by the web API
+data/latest_results.json
